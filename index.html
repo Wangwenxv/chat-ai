@@ -435,9 +435,8 @@
             <div v-show="currentView === 'chat'" class="chat-view-root flex flex-col h-full relative">
 
                 <!-- Character Background Layer -->
-                <div v-if="settings.useCharacterBackground && currentCharacter && currentCharacter?.avatar"
-                    class="absolute -inset-4 bg-cover bg-center bg-no-repeat pointer-events-none transition-opacity duration-500 z-0 blur-[2px] char-bg-blur"
-                    :style="{ backgroundImage: `url(${currentCharacter?.avatar})`, opacity: 0.9 }">
+                <div v-if="settings.useCharacterBackground && currentCharacter"
+                    class="absolute inset-0 pointer-events-none transition-opacity duration-500 z-0 char-bg-solid">
                 </div>
 
                 <!-- Blur Overlay for Description Panel -->
@@ -597,7 +596,7 @@
                 <div ref="chatContainer" @click="showChatModelSelector = false"
                     @scroll="handleChatScroll"
                     class="flex-1 overflow-y-auto overflow-x-hidden px-2 pt-14 md:pt-16 pb-44 md:pb-60 relative z-0 space-y-14 md:space-y-16 transition-all duration-500"
-                    :class="!settings.useCharacterBackground || !currentCharacter || !currentCharacter?.avatar ? 'bg-gray-50' : ''">
+                    :class="!settings.useCharacterBackground || !currentCharacter ? 'bg-gray-50' : ''">
                     <div v-if="!currentCharacter"
                         class="flex flex-col items-center justify-center h-full text-gray-500">
                         <div class="w-24 h-24 bg-gray-200 rounded-full mb-4 flex items-center justify-center">

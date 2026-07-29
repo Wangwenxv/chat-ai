@@ -1115,6 +1115,10 @@
             overflow: hidden;
         }
 
+        .char-bg-solid {
+            background: #2f3136;
+        }
+
         .c-tongqiu { border-left-color: #f59e0b; } .c-tongqiu .bar-fill { background: #f59e0b; }
         .c-yufan { border-left-color: #3b82f6; } .c-yufan .bar-fill { background: #3b82f6; }
         .c-linghu { border-left-color: #8b5cf6; } .c-linghu .bar-fill { background: #8b5cf6; }

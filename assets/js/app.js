@@ -117,26 +117,32 @@ createApp({
         const cardUtils = window.RPHubCardUtils;
 
         const APP_NAME = 'chat-ai';
-        const DEFAULT_CHAT_AI_AVATAR = 'assets/defalut/Chat-ai.png';
-        const CHAT_AI_SOUL_PROMPT_URL = 'assets/defalut/soul.md';
+        const DEFAULT_CHAT_AI_ROBOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect width="160" height="160" rx="36" fill="#2f3136"/><circle cx="80" cy="54" r="18" fill="#60a5fa" opacity=".95"/><path d="M80 72v12" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/><rect x="32" y="78" width="96" height="58" rx="24" fill="#f8fafc"/><rect x="47" y="93" width="66" height="28" rx="14" fill="#111827"/><circle cx="65" cy="107" r="6" fill="#60a5fa"/><circle cx="95" cy="107" r="6" fill="#60a5fa"/><path d="M64 128h32" stroke="#94a3b8" stroke-width="6" stroke-linecap="round"/><path d="M32 104H20M140 104h-12" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/></svg>`;
+        const DEFAULT_CHAT_AI_AVATAR = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DEFAULT_CHAT_AI_ROBOT_SVG)}`;
+        const CHAT_AI_CHARACTER_CARD_URL = 'assets/defalut/Chat-ai.json';
         const DEFAULT_CHAT_AI_CHARACTER_UUID = 'chat-ai-default';
         const SIMPLE_CHAT_AI_MODE = true;
-        const readChatAiSoulPromptSync = (url) => {
-            if (typeof XMLHttpRequest === 'undefined') return '';
+        const readChatAiCharacterCardSync = (url) => {
+            if (typeof XMLHttpRequest === 'undefined') return null;
             try {
                 const request = new XMLHttpRequest();
                 request.open('GET', url, false);
-                request.overrideMimeType?.('text/plain; charset=utf-8');
+                request.overrideMimeType?.('application/json; charset=utf-8');
                 request.send(null);
                 if ((request.status === 0 || (request.status >= 200 && request.status < 300)) && request.responseText) {
-                    return request.responseText;
+                    return JSON.parse(request.responseText);
                 }
             } catch (error) {
-                console.warn('Failed to read chat-ai soul prompt synchronously:', error);
+                console.warn('Failed to read chat-ai character card synchronously:', error);
             }
-            return '';
+            return null;
         };
-        const SIMPLE_CHAT_AI_SYSTEM_PROMPT = readChatAiSoulPromptSync(CHAT_AI_SOUL_PROMPT_URL) || 'You are Chat-ai.';
+        let simpleChatAiCharacterCard = readChatAiCharacterCardSync(CHAT_AI_CHARACTER_CARD_URL);
+        const getSimpleChatAiCardData = () => {
+            const cardData = simpleChatAiCharacterCard?.data || simpleChatAiCharacterCard || {};
+            return cardData && typeof cardData === 'object' && !Array.isArray(cardData) ? cardData : {};
+        };
+        const SIMPLE_CHAT_AI_SYSTEM_PROMPT = getSimpleChatAiCardData().personality || 'You are Chat-ai.';
         const DEFAULT_USER_NAME_PLACEHOLDER = '请前往设置自定义你的名称';
 
         // Default Avatar
@@ -541,18 +547,20 @@ createApp({
         const getCurrentCharacterPrompt = () =>
             `Name: ${currentCharacter.value.name}\nPersonality: ${currentCharacter.value.personality}`;
 
-        const loadChatAiSystemPrompt = async () => {
+        const loadChatAiCharacterCard = async () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
             try {
-                const response = await fetch(CHAT_AI_SOUL_PROMPT_URL, { cache: 'no-store' });
+                const response = await fetch(CHAT_AI_CHARACTER_CARD_URL, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const content = await response.text();
-                if (!content.trim()) return;
-                chatAiSystemPrompt.value = content;
+                const content = await response.json();
+                if (!content || typeof content !== 'object') return;
+                simpleChatAiCharacterCard = content;
+                const cardData = getSimpleChatAiCardData();
+                if (cardData.personality) chatAiSystemPrompt.value = cardData.personality;
                 const builtinCharacter = characters.value.find(char => char?.uuid === DEFAULT_CHAT_AI_CHARACTER_UUID);
-                if (builtinCharacter) builtinCharacter.personality = content;
+                if (builtinCharacter) Object.assign(builtinCharacter, createDefaultChatAiCharacter());
             } catch (error) {
-                console.warn('Failed to load chat-ai soul prompt, using fallback prompt:', error);
+                console.warn('Failed to load chat-ai character card, using fallback character:', error);
             }
         };
 
@@ -804,21 +812,45 @@ createApp({
         const showAddCharacterMenu = ref(false);
         const currentCharacterIndex = ref(-1);
 
-        const createDefaultChatAiCharacter = () => ({
-            name: APP_NAME,
-            description: '通用 AI 助手',
-            first_mes: '',
-            avatar: DEFAULT_CHAT_AI_AVATAR,
-            personality: chatAiSystemPrompt.value,
-            mes_example: '',
-            worldInfo: [],
-            regexScripts: [],
-            uiTemplates: [],
-            recentGenerationTimes: [],
-            uuid: DEFAULT_CHAT_AI_CHARACTER_UUID,
-            createdAt: 0,
-            isBuiltinChatAi: true
-        });
+        const createDefaultChatAiCharacter = () => {
+            const cardData = getSimpleChatAiCardData();
+            const extensions = cardData.extensions || {};
+            const characterBook = cardData.character_book || simpleChatAiCharacterCard?.character_book || null;
+            let worldInfoEntries = [];
+            if (Array.isArray(characterBook?.entries)) {
+                worldInfoEntries = characterBook.entries;
+            } else if (characterBook?.entries && typeof characterBook.entries === 'object') {
+                worldInfoEntries = Object.values(characterBook.entries);
+            } else if (Array.isArray(characterBook)) {
+                worldInfoEntries = characterBook;
+            }
+
+            const regexScripts = extensions.regex_scripts || simpleChatAiCharacterCard?.extensions?.regex_scripts || [];
+            const uiTemplates = cardData.uiTemplates
+                || cardData.ui_templates
+                || extensions.ui_templates
+                || extensions.rp_hub_ui_templates
+                || [];
+            const personality = cardData.personality || chatAiSystemPrompt.value || SIMPLE_CHAT_AI_SYSTEM_PROMPT;
+            chatAiSystemPrompt.value = personality;
+
+            return {
+                name: cardData.name || cardData.char_name || APP_NAME,
+                description: cardData.description || cardData.char_persona || '通用 AI 助手',
+                first_mes: cardData.first_mes || '',
+                avatar: DEFAULT_CHAT_AI_AVATAR,
+                personality,
+                creator_notes: cardData.creator_notes || cardData.creatorcomment || cardData.creator_comment || '',
+                mes_example: '',
+                worldInfo: worldInfoEntries.map(entry => normalizeWorldInfoEntry({ ...entry, scope: 'character' })).filter(entry => entry.scope !== 'global'),
+                regexScripts: Array.isArray(regexScripts) ? regexScripts.map(script => normalizeRegexScript({ ...script, scope: 'character' }, 'character')).filter(script => script.scope !== 'global') : [],
+                uiTemplates: Array.isArray(uiTemplates) ? uiTemplates.map(template => normalizeUiTemplate({ ...sanitizeUiTemplateImportEntry(template), id: generateUUID(), scope: 'character' })) : [],
+                recentGenerationTimes: [],
+                uuid: DEFAULT_CHAT_AI_CHARACTER_UUID,
+                createdAt: 0,
+                isBuiltinChatAi: true
+            };
+        };
 
         const ensureSimpleChatAiCharacter = () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
@@ -10490,7 +10522,7 @@ image###生成的提示词###
             document.addEventListener('fullscreenchange', syncChatFullscreenState);
             document.addEventListener('webkitfullscreenchange', syncChatFullscreenState);
 
-            await loadChatAiSystemPrompt();
+            await loadChatAiCharacterCard();
             await loadData();
             fetchQuota(); // Fetch quota after saved settings are loaded
 

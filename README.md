@@ -1,11 +1,11 @@
-# Roleplay Hub
+# chat-ai
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 [![Vue](https://img.shields.io/badge/Vue-3-4FC08D.svg?logo=vue.js)](https://vuejs.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![DaisyUI](https://img.shields.io/badge/DaisyUI-5A0EF8?logo=daisyui&logoColor=white)](https://daisyui.com/)
 
-> **一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具。**
+> **一款纯前端运行的本地 AI 对话工具。**
 
 **【免责与授权声明】**  
 本项目基于 **[CC BY-NC 4.0（知识共享-署名-非商业性使用 4.0 国际许可协议）](./LICENSE)** 开源。**明确禁止任何形式的商业化使用（包括但不限于：作为收费服务提供、打包在付费产品中售卖、在产品内植入广告盈利等）。** 任何使用者必须遵守该协议，尊重原作者的署名权。对于违反协议的商业行为，保留追究法律责任的权利。
@@ -14,7 +14,7 @@
 
 ## 核心特性 (Features)
 
-Roleplay Hub 致力于提供流畅、私密且功能强大的本地化AI Roleplay体验。
+chat-ai 致力于提供流畅、私密、轻量的本地化 AI 对话体验。
 
 ## 快速开始 (Quick Start)
 
@@ -23,7 +23,7 @@ Roleplay Hub 致力于提供流畅、私密且功能强大的本地化AI Rolepla
 ### 1. 下载与运行
 1. 点击项目主页绿色的 `Code` 按钮，选择 `Download ZIP`。
 2. 将下载的 ZIP 压缩包解压到您的本地任意文件夹中。
-3. 双击打开 `index.html` 文件，即可在浏览器（推荐 Chrome / Edge / Firefox）中启动 Roleplay Hub。
+3. 双击打开 `index.html` 文件，即可在浏览器（推荐 Chrome / Edge / Firefox）中启动 chat-ai。
 
 *(注：如果您遇到跨域或本地文件读取权限问题，可以尝试使用 VS Code 的 `Live Server` 插件，或简单的本地服务器工具来运行该目录。但在绝大多数现代浏览器中，双击 index.html 即可正常使用所有核心功能。)*
 
@@ -31,15 +31,14 @@ Roleplay Hub 致力于提供流畅、私密且功能强大的本地化AI Rolepla
 1. 打开应用后，点击侧边栏（或顶部菜单）的**设置 (Settings)** 选项。
 2. 选择自定义配置，填入您自己的或第三方提供的 API 节点 (`API URL`)。
 3. 填入对应的 `API Key`，并输入或选择您想使用的 `模型名称 (Model)`。
-4. 在**角色管理**界面，导入您的角色卡文件（或点击新建角色并手动填写设定）。
-5. 回到对话界面，开始属于您的 Roleplay 旅程
+4. 回到对话界面，开始使用 chat-ai。
 
 ---
 
 ## 目录结构 (Directory Structure)
 
 ```text
-Roleplay-Hub/
+chat-ai/
 ├── index.html            # 主程序
 ├── character/            # 辅助页面
 │   └── index.html

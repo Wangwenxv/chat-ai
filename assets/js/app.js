@@ -4749,6 +4749,7 @@ ${content}
                 name: user.name,
                 content: finalContent,
                 attachments: referenceImages,
+                requestMode: generationMode.value,
                 shouldAnimate: true,
                 skipReveal: true,
                 isSelf: true,
@@ -5252,9 +5253,41 @@ ${content}
             };
 
             const msg = chatHistory.value[index];
+            const sourceUserMessage = (() => {
+                for (let messageIndex = index; messageIndex >= 0; messageIndex -= 1) {
+                    const message = chatHistory.value[messageIndex];
+                    if (message?.role === 'user') return message;
+                }
+                return null;
+            })();
+            const explicitRequestMode = msg?.requestMode || sourceUserMessage?.requestMode;
+            const requestMode = explicitRequestMode === 'image'
+                || !!msg?.imageGeneration
+                || (Array.isArray(msg?.generatedImages) && msg.generatedImages.length > 0)
+                || (msg?.role === 'user' && index === chatHistory.value.length - 1
+                    && !explicitRequestMode && generationMode.value === 'image')
+                ? 'image'
+                : 'chat';
+            const regenerateFromSourceMessage = async () => {
+                if (!sourceUserMessage) {
+                    showToast('未找到需要重新生成的用户消息', 'error');
+                    return;
+                }
+                if (requestMode === 'image') {
+                    await generateImageResponse(startTime, sourceUserMessage);
+                    return;
+                }
+                startRegenerationStatus();
+                await generateResponse(startTime, {
+                    reuseGeneratingState: true,
+                    currentReferenceImages: Array.isArray(sourceUserMessage.attachments)
+                        ? sourceUserMessage.attachments
+                        : [],
+                    currentUserMessageId: sourceUserMessage.id || null
+                });
+            };
 
             if (msg.role === 'user') {
-                startRegenerationStatus();
                 // 如果是用户消息，直接基于当前上下文生成（重试/继续）
                 abortUiTemplateUpdate();
                 abortVectorBatchExtraction();
@@ -5265,11 +5298,10 @@ ${content}
                 await filterMemoriesAsync(m => (m.turn || 0) < currentTurn);
                 await removeClassicMemoriesFromTurn(snapshot, currentTurn);
                 await Promise.all([saveMemoriesNow(), saveClassicMemoriesNow()]);
-                await generateResponse(startTime, { reuseGeneratingState: true });
+                await regenerateFromSourceMessage();
             } else {
                 // 如果是 AI 消息，删除它（及之后）然后重新生成
                 confirmAction('确定要重新生成这条消息吗？该楼层的记忆将被清除。', async () => {
-                    startRegenerationStatus();
                     abortUiTemplateUpdate();
                     abortVectorBatchExtraction();
                     abortClassicBatchExtraction();
@@ -5286,7 +5318,7 @@ ${content}
                     }
                     chatHistory.value = chatHistory.value.slice(0, index);
                     await saveConversationMutationNow({ saveTemplateRuntime: uiCleanup.logs > 0 || uiCleanup.blocks > 0 });
-                    await generateResponse(startTime, { reuseGeneratingState: true });
+                    await regenerateFromSourceMessage();
                 });
             }
         };
@@ -6737,6 +6769,12 @@ ${content}
             return results;
         };
 
+        const explainImageGenerationError = (value) => {
+            const message = String(value || '未知错误');
+            if (!/model_not_found|no available channel|无可用渠道/i.test(message)) return message;
+            return `${message}\n当前生图 API 分组没有该模型的可用渠道。这是服务端渠道配置或状态问题，不是对话模型或对话 API Key 被复用。`;
+        };
+
         const generateImageResponse = async (startTime, userMessage) => {
             const apiKey = String(settings.imageApiKey || '').trim();
             if (!apiKey) {
@@ -6804,6 +6842,7 @@ ${content}
                 role: 'assistant',
                 name: currentCharacter.value?.name || '生图 AI',
                 content: '',
+                requestMode: 'image',
                 generatedImages: [],
                 imageGeneration: {
                     status: 'connecting',
@@ -6931,10 +6970,11 @@ ${content}
                     showToast('生图已中止', 'info');
                 } else {
                     console.error('Image generation failed:', error);
-                    imageGenerationMessage.content = `生图失败：${error.message || '未知错误'}`;
+                    const errorMessage = explainImageGenerationError(error.message);
+                    imageGenerationMessage.content = `生图失败：${errorMessage}`;
                     imageGenerationMessage.imageGeneration.status = 'error';
                     imageGenerationMessage.imageGeneration.label = '生成失败';
-                    showToast(error.message || '生图失败', 'error', 5000);
+                    showToast(errorMessage, 'error', 7000);
                 }
             } finally {
                 if (waitTimer) {

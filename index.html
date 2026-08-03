@@ -623,7 +623,7 @@
                     <div ref="messageElements"
                         :data-role="msg.role"
                         :data-chat-index="index"
-                        v-show="!(msg.role === 'assistant' && index === chatHistory.length - 1 && isThinking && !(msg.reasoning || parseCot(msg.content).cot || parseCot(msg.content).main || (msg.toolCalls && msg.toolCalls.length)))"
+                        v-show="!(msg.role === 'assistant' && index === chatHistory.length - 1 && isThinking && !msg.imageGeneration && !(msg.reasoning || parseCot(msg.content).cot || parseCot(msg.content).main || (msg.toolCalls && msg.toolCalls.length)))"
                         :class="['flex w-full scroll-reveal-container', settings.immersiveMode ? 'immersive-message-row' : '', msg.isSelf ? 'justify-end' : 'justify-start', msg.skipReveal ? 'reveal-active' : (settings.immersiveMode ? 'scroll-reveal-center' : (msg.isSelf ? 'scroll-reveal-right' : 'scroll-reveal-left'))]"
                         :style="{ transitionDelay: (displayIndex % 5) * 50 + 'ms' }">
                         <div
@@ -706,6 +706,55 @@
 
                                         <div v-else class="message-content-wrapper"
                                             :class="{'w-full': messageUsesWideLayout(msg)}">
+                                            <div v-if="msg.attachments && msg.attachments.length" class="message-image-grid message-image-grid--reference">
+                                                <a v-for="image in msg.attachments" :key="image.id" :href="image.dataUrl"
+                                                    target="_blank" rel="noopener" :title="image.name">
+                                                    <img :src="image.dataUrl" :alt="image.name || '参考图片'">
+                                                </a>
+                                            </div>
+                                            <div v-if="msg.imageGeneration" class="image-generation-stage"
+                                                :class="'is-' + msg.imageGeneration.status" aria-live="polite">
+                                                <a v-if="msg.imageGeneration.status === 'completed' && msg.generatedImages && msg.generatedImages[0]"
+                                                    class="image-generation-canvas" :style="{ aspectRatio: msg.imageGeneration.aspectRatio }"
+                                                    :href="msg.generatedImages[0].dataUrl" target="_blank" rel="noopener"
+                                                    :download="msg.generatedImages[0].name" :title="msg.generatedImages[0].prompt || msg.generatedImages[0].name">
+                                                    <img :src="msg.generatedImages[0].dataUrl" :alt="msg.generatedImages[0].prompt || '生成图片'">
+                                                </a>
+                                                <div v-else class="image-generation-canvas"
+                                                    :style="{ aspectRatio: msg.imageGeneration.aspectRatio }">
+                                                    <img v-if="msg.imageGeneration.previewDataUrl"
+                                                        :src="msg.imageGeneration.previewDataUrl" alt="生图预览">
+                                                    <div v-else class="image-generation-placeholder animate-pulse" aria-hidden="true">
+                                                        <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                                        </svg>
+                                                        <span class="live-dots mt-3" aria-hidden="true"><i></i><i></i><i></i></span>
+                                                    </div>
+                                                </div>
+                                                <div class="image-generation-status" :title="msg.imageGeneration.lastEventType || msg.imageGeneration.label">
+                                                    <span v-if="['connecting', 'generating'].includes(msg.imageGeneration.status)"
+                                                        class="live-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                                                    <svg v-else-if="msg.imageGeneration.status === 'completed'" class="w-4 h-4 text-green-600"
+                                                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                                                    </svg>
+                                                    <svg v-else class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                    </svg>
+                                                    <span class="image-generation-status__label">{{ msg.imageGeneration.label }}</span>
+                                                    <span class="image-generation-status__count">{{ msg.imageGeneration.eventCount }} 个事件</span>
+                                                    <span v-if="msg.imageGeneration.previewCount" class="image-generation-status__count">
+                                                        {{ msg.imageGeneration.previewCount }} 次预览
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div v-else-if="msg.generatedImages && msg.generatedImages.length" class="message-image-grid message-image-grid--generated">
+                                                <a v-for="image in msg.generatedImages" :key="image.id" :href="image.dataUrl"
+                                                    target="_blank" rel="noopener" :download="image.name" :title="image.prompt || image.name">
+                                                    <img :src="image.dataUrl" :alt="image.prompt || '生成图片'">
+                                                </a>
+                                            </div>
                                                                                         <!-- Unified Summary Timeline Part -->
                                             <div v-if="hasThinkingOrTools(msg)" class="native-thinking-wrapper">
                                                 <div class="cot-ui native-thinking-card summary-timeline-card"
@@ -968,19 +1017,26 @@
                     <div
                         class="w-full max-w-lg pointer-events-auto p-2.5 md:p-3 bg-white/90 backdrop-blur-xl border border-white/40 shadow-lg rounded-3xl ring-1 ring-black/5 transition-all duration-300 flex flex-col input-island">
                         <div class="relative w-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 mb-2 px-1">
-                            <!-- Left controls: AutoImage -->
+                            <!-- Left controls: generation mode -->
                             <div class="flex items-center gap-2">
-                                <!-- Auto Image Button -->
-                                <button @click="toggleAutoImageGen"
-                                    :class="[isAutoImageGenEnabled ? 'bg-primary-500 text-white shadow-primary-500/30 border-primary-500' : 'bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-gray-200 shadow-sm']"
-                                    class="rounded-full w-8 h-8 flex items-center justify-center border transition-all active:scale-95"
-                                    title="自动生图开关">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
-                                        </path>
-                                    </svg>
-                                </button>
+                                <div class="chat-generation-mode" role="group" aria-label="生成模式">
+                                    <button type="button" @click="setGenerationMode('chat')"
+                                        :class="generationMode === 'chat' ? 'is-active bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-white'" title="对话模式">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
+                                        </svg>
+                                        <span>对话</span>
+                                    </button>
+                                    <button type="button" @click="setGenerationMode('image')"
+                                        :class="generationMode === 'image' ? 'is-active bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-white'" title="生图模式">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                        <span>生图</span>
+                                    </button>
+                                </div>
                                 <!-- Instruction Button -->
                                 <div class="relative instruction-panel-container">
                                     <button @click="showInstructionPanel = !showInstructionPanel"
@@ -1043,7 +1099,7 @@
                                 </button>
                             </div>
 
-                            <div class="min-w-0 flex justify-end chat-model-selector-container" @click.stop>
+                            <div v-if="generationMode === 'chat'" class="min-w-0 flex justify-end chat-model-selector-container" @click.stop>
                                 <button @click="refreshChatModels"
                                     class="px-3 py-1.5 rounded-full text-[10px] md:text-xs font-bold transition-all duration-300 flex items-center bg-white hover:bg-gray-50 border border-gray-200 shadow-sm active:scale-95 text-gray-600 hover:text-primary-600"
                                     title="拉取模型列表">
@@ -1052,12 +1108,11 @@
                                             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
                                         </path>
                                     </svg>
-                                    <span class="hidden sm:inline">拉取模型</span>
                                 </button>
                             </div>
 
                             <!-- Right controls: Model selector -->
-                            <div class="flex items-center justify-end chat-model-selector-container" @click.stop>
+                            <div v-if="generationMode === 'chat'" class="flex items-center justify-end chat-model-selector-container" @click.stop>
                                 <div class="relative max-w-[10rem] sm:max-w-[14rem] md:max-w-[16rem]">
                                     <transition enter-active-class="transition-all duration-150 ease-out"
                                         enter-from-class="opacity-0 translate-y-2 scale-95"
@@ -1125,17 +1180,39 @@
                                     </button>
                                 </div>
                             </div>
+                            <div v-else class="min-w-0 flex justify-end">
+                                <span class="image-mode-model-label" :title="settings.imageModel">{{ settings.imageModel || 'gpt-image-2' }}</span>
+                            </div>
+                        </div>
+                        <div v-if="pendingReferenceImages.length" class="pending-reference-strip" aria-label="待发送参考图片">
+                            <div v-for="image in pendingReferenceImages" :key="image.id" class="pending-reference-item">
+                                <img :src="image.dataUrl" :alt="image.name">
+                                <button type="button" @click="removePendingReferenceImage(image.id)" title="移除图片">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="relative w-full flex items-end gap-2 px-1">
+                            <input ref="referenceImageInput" type="file" accept="image/*" multiple class="sr-only"
+                                @change="handleReferenceImageSelection">
+                            <button type="button" @click="referenceImageInput && referenceImageInput.click()"
+                                class="reference-image-button" title="添加参考图片">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828a4 4 0 10-5.657-5.657L5.757 10.757a6 6 0 108.486 8.486L20.5 13"></path>
+                                </svg>
+                            </button>
                             <textarea v-model="userInput" @input="autoResizeInput" @focus="handleChatInputFocus"
-                                @blur="handleChatInputBlur" @keydown.enter.prevent="sendMessage"
-                                :placeholder="'输入消息...'"
+                                @blur="handleChatInputBlur" @paste="handleChatPaste" @keydown.enter.prevent="sendMessage"
+                                :placeholder="generationMode === 'image' ? '描述想生成的图片，可粘贴参考图...' : '输入消息，可粘贴图片...'"
                                 class="flex-1 bg-gray-100/70 text-gray-800 rounded-2xl px-4 py-2.5 md:px-4 md:py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 resize-none border border-transparent shadow-inner transition-all focus:bg-white chat-input-scrollbar min-h-[44px] md:min-h-[46px] max-h-[140px] md:max-h-[160px]"
                                 rows="1" ref="inputBox"></textarea>
 
                             <!-- Send/Stop Button -->
                             <div class="flex-shrink-0 flex items-center gap-1">
-                                <button v-if="!isConversationBusy" @click="sendMessage" :disabled="!userInput.trim()"
+                                <button v-if="!isConversationBusy" @click="sendMessage" :disabled="!userInput.trim() && pendingReferenceImages.length === 0"
                                     class="p-2 md:p-2.5 bg-primary-600 text-white rounded-2xl md:hover:bg-primary-700 md:hover:shadow-lg md:hover:-translate-y-0.5 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all shadow-md flex items-center justify-center w-[44px] h-[44px] md:w-[46px] md:h-[46px]"
                                     title="发送">
                                     <svg class="w-5 h-5 transform rotate-90" fill="none"
@@ -1820,10 +1897,7 @@
                                                 <div class="flex items-center gap-1.5 min-w-0 text-xs font-bold text-gray-700 truncate">
                                                     <span>生图服务</span>
                                                     <span class="text-gray-400">·</span>
-                                                    <span class="text-gray-500 font-medium whitespace-nowrap">
-                                                        <span v-if="quotaLoading">获取中...</span>
-                                                        <span v-else>{{ quotaError ? '查询失败' : quotaValue + ' 次' }}</span>
-                                                    </span>
+                                                    <span class="text-gray-500 font-medium whitespace-nowrap">Responses API</span>
                                                 </div>
                                                 <span v-if="imageGenStatus === 'connected'"
                                                     class="text-xs font-mono font-medium text-teal-600">{{
@@ -2075,48 +2149,61 @@
                                                 class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition-all">
                                         </div>
 
-                                        <!-- Image Key -->
+                                        <!-- Image API URL -->
                                         <div
                                             class="generation-setting-card">
                                             <label
-                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">自动生图密钥</label>
-                                            <input v-model="settings.imageGenKey" type="password"
+                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">生图 API 地址</label>
+                                            <input v-model="settings.imageApiUrl" type="url"
                                                 class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm"
-                                                placeholder="STA1N-...">
+                                                placeholder="https://vsllm.com/v1">
                                         </div>
 
-                                        <!-- Image Style -->
+                                        <!-- Image API Key -->
                                         <div
                                             class="generation-setting-card">
                                             <label
-                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">生图风格</label>
-                                            <custom-select v-model="settings.imageStyle" :options="imageStyleOptions"
+                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">生图 API Key</label>
+                                            <input v-model="settings.imageApiKey" type="password"
+                                                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm"
+                                                placeholder="sk-...">
+                                        </div>
+
+                                        <div class="generation-setting-card">
+                                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Responses 模型</label>
+                                            <input v-model="settings.imageChatModel" type="text"
+                                                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm font-mono">
+                                        </div>
+
+                                        <div class="generation-setting-card">
+                                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">生图模型</label>
+                                            <input v-model="settings.imageModel" type="text"
+                                                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm font-mono">
+                                        </div>
+
+                                        <div
+                                            class="generation-setting-card">
+                                            <label
+                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">图片大小</label>
+                                            <custom-select v-model="settings.imageOutputSize" :options="imageSizeOptions"
                                                 button-class="rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:border-teal-400 focus:ring-teal-100"
                                                 menu-class="text-sm">
                                             </custom-select>
-                                            <textarea v-if="settings.imageStyle === 'custom'"
-                                                v-model="settings.customImageArtists" rows="3"
-                                                class="mt-3 w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm resize-y custom-scrollbar"
-                                                placeholder="输入自定义画师串"></textarea>
                                         </div>
 
-                                        <!-- Image Size -->
                                         <div
                                             class="generation-setting-card">
                                             <label
-                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">生图比例</label>
-                                            <custom-select v-model="settings.imageSize" :options="imageSizeOptions"
+                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">图片格式</label>
+                                            <custom-select v-model="settings.imageOutputFormat" :options="imageOutputFormatOptions"
                                                 button-class="rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:border-teal-400 focus:ring-teal-100"
                                                 menu-class="text-sm">
                                             </custom-select>
                                         </div>
 
-                                        <!-- Image Count -->
-                                        <div
-                                            class="generation-setting-card">
-                                            <label
-                                                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">期望生图数量</label>
-                                            <custom-select v-model="settings.imageGenCount" :options="imageGenCountOptions"
+                                        <div class="generation-setting-card">
+                                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">思考程度</label>
+                                            <custom-select v-model="settings.imageReasoningEffort" :options="imageReasoningEffortOptions"
                                                 button-class="rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:border-teal-400 focus:ring-teal-100"
                                                 menu-class="text-sm">
                                             </custom-select>
@@ -3553,10 +3640,7 @@
                                             <div class="flex items-center gap-1.5 min-w-0 text-xs font-bold text-gray-700 truncate">
                                                 <span>生图服务</span>
                                                 <span class="text-gray-400">·</span>
-                                                <span class="text-gray-500 font-medium whitespace-nowrap">
-                                                    <span v-if="quotaLoading">获取中...</span>
-                                                    <span v-else>{{ quotaError ? '查询失败' : quotaValue + ' 次' }}</span>
-                                                </span>
+                                                <span class="text-gray-500 font-medium whitespace-nowrap">Responses API</span>
                                             </div>
                                             <span v-if="imageGenStatus === 'connected'"
                                                 class="text-xs font-mono font-medium text-teal-600">{{ imageGenLatency }}ms</span>
@@ -3703,6 +3787,51 @@
                                         </svg>
                                         刷新可用模型列表
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-1">
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">生图 API</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div class="group md:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">API 地址</label>
+                                    <input v-model="settings.imageApiUrl" type="url"
+                                        class="w-full h-12 bg-gray-50/60 border-2 border-gray-100 rounded-xl px-4 text-gray-800 font-medium focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 focus:outline-none transition-all font-mono text-sm"
+                                        placeholder="https://vsllm.com/v1">
+                                </div>
+                                <div class="group md:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">API Key</label>
+                                    <input v-model="settings.imageApiKey" type="password"
+                                        class="w-full h-12 bg-gray-50/60 border-2 border-gray-100 rounded-xl px-4 text-gray-800 font-medium focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 focus:outline-none transition-all font-mono text-sm"
+                                        placeholder="sk-...">
+                                </div>
+                                <div class="group">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">Responses 模型</label>
+                                    <input v-model="settings.imageChatModel" type="text"
+                                        class="w-full h-12 bg-gray-50/60 border-2 border-gray-100 rounded-xl px-4 text-gray-800 font-medium focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 focus:outline-none transition-all font-mono text-sm"
+                                        placeholder="gpt-image-2-chat">
+                                </div>
+                                <div class="group">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">生图模型</label>
+                                    <input v-model="settings.imageModel" type="text"
+                                        class="w-full h-12 bg-gray-50/60 border-2 border-gray-100 rounded-xl px-4 text-gray-800 font-medium focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 focus:outline-none transition-all font-mono text-sm"
+                                        placeholder="gpt-image-2">
+                                </div>
+                                <div class="group">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">图片格式</label>
+                                    <custom-select v-model="settings.imageOutputFormat" :options="imageOutputFormatOptions"
+                                        button-class="rounded-xl px-4 py-3 text-sm" menu-class="text-sm"></custom-select>
+                                </div>
+                                <div class="group">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">图片大小</label>
+                                    <custom-select v-model="settings.imageOutputSize" :options="imageSizeOptions"
+                                        button-class="rounded-xl px-4 py-3 text-sm" menu-class="text-sm"></custom-select>
+                                </div>
+                                <div class="group md:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">思考程度</label>
+                                    <custom-select v-model="settings.imageReasoningEffort" :options="imageReasoningEffortOptions"
+                                        button-class="rounded-xl px-4 py-3 text-sm" menu-class="text-sm"></custom-select>
                                 </div>
                             </div>
                         </div>
@@ -4617,62 +4746,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Auto Image Gen Inquiry Modal -->
-        <div v-if="showAutoImageGenModal"
-            class="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-            <div
-                class="bg-white rounded-2xl border border-gray-200 w-full max-w-md flex flex-col shadow-2xl transform transition-all scale-100 overflow-hidden">
-                <div class="bg-gradient-to-r from-primary-50 to-blue-50 p-6 border-b border-gray-100">
-                    <div class="flex items-center gap-3">
-                        <div
-                            class="w-10 h-10 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
-                                </path>
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-900">自动生图</h3>
-                    </div>
-                </div>
-                <div class="p-6 space-y-4">
-                    <p class="text-gray-600 leading-relaxed text-center text-lg font-medium">是否为此角色卡开启 <span
-                            class="font-bold text-primary-600">自动生图</span> 功能？</p>
-
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                        <div class="flex items-start mb-3">
-                            <div class="flex-shrink-0">
-                                <svg class="h-5 w-5 text-yellow-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd"
-                                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                            </div>
-                            <h4 class="ml-2 text-sm font-bold text-yellow-800">注意事项</h4>
-                        </div>
-                        <ul class="list-disc list-outside ml-9 space-y-1.5 text-sm text-yellow-700">
-                            <li>您可以在 “世界书 -> 自动生图” 手动管理此功能。</li>
-                            <li>前往 “设置” 可以切换生图风格与比例。</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="bg-gray-50 p-4 flex justify-end gap-3 rounded-b-2xl border-t border-gray-100">
-                    <button @click="setAutoImageGen(false)"
-                        class="px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-xl border border-gray-200 transition-all active:scale-95">
-                        暂不开启
-                    </button>
-                    <button @click="setAutoImageGen(true)"
-                        class="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
-                        立即开启
-                    </button>
-                </div>
-            </div>
-        </div>
-
-
-
-
 
         <!-- Export Selection Modal -->
         <div v-if="showExportModal"

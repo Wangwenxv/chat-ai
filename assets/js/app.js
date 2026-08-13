@@ -1,5 +1,101 @@
 ﻿const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } = Vue;
 
+// 从按职责拆分的模块中装配配置、通用工具和领域服务。
+const {
+    APP_NAME,
+    SIMPLE_CHAT_AI_MODE,
+    CHAT_AI_CHARACTER_CARD_URL,
+    DEFAULT_CHAT_AI_CHARACTER_UUID,
+    DEFAULT_CHAT_AI_AVATAR,
+    DEFAULT_USER_NAME_PLACEHOLDER,
+    SYSTEM_REGEX_NAMES,
+    SYSTEM_WORLD_INFO_NAMES,
+    IMAGE_GEN_BASE_URL,
+    DEFAULT_IMAGE_API_URL,
+    DEFAULT_IMAGE_CHAT_MODEL,
+    DEFAULT_IMAGE_MODEL,
+    MAX_PENDING_REFERENCE_IMAGES,
+    MAX_REFERENCE_IMAGE_BYTES,
+    STORAGE_CONFIG,
+    DEFAULT_API_PROVIDER_ID,
+    DEFAULT_API_CONFIG,
+    API_PROVIDER_OPTIONS
+} = window.ChatAIConfig;
+const { generateUUID, parseCot } = window.ChatAIUtils;
+const {
+    UiTemplatePending,
+    EmbeddedViewContent,
+    GenerationTimer,
+    SettingsPageHeader
+} = window.ChatAIComponents;
+const appStorage = window.ChatAIStorage.createStorage(STORAGE_CONFIG);
+const {
+    init: initDB,
+    cloneForStorage,
+    isDatabaseClosingError,
+    setStoredValue,
+    getStoredValue,
+    setScopedStoredValue,
+    getScopedStoredValue,
+    deleteScopedStoredValue
+} = appStorage;
+const {
+    getConversationStorageScopeId,
+    buildChatSessionMeta,
+    sortChatSessions,
+    normalizeChatSessionState,
+    formatChatSessionTime
+} = window.ChatAISession.createSessionTools({ generateUUID, parseCot });
+const defaultCharacterService = window.ChatAIDefaultCharacter.createDefaultCharacterService({
+    cardUrl: CHAT_AI_CHARACTER_CARD_URL,
+    characterUuid: DEFAULT_CHAT_AI_CHARACTER_UUID,
+    appName: APP_NAME,
+    defaultAvatar: DEFAULT_CHAT_AI_AVATAR
+});
+const {
+    getApiUsagePayload,
+    extractApiUsageFromText,
+    normalizeApiUsage,
+    formatApiErrorMessage,
+    extractApiErrorMessage,
+    throwApiError
+} = window.ChatAIApiProtocol;
+const {
+    normalizeWorldInfoEntry,
+    parseCharacterCard
+} = window.ChatAICharacterCardParser.createCardParser({
+    systemWorldInfoNames: SYSTEM_WORLD_INFO_NAMES
+});
+const {
+    isEmbeddingLike,
+    splitLongMemoryParagraph,
+    splitMemoryParagraphs,
+    mergeSmallMemoryParagraphs,
+    normalizeEmbedding,
+    cosineSimilarity,
+    getVectorMemoryContentFingerprint,
+    extractVectorQueryTerms,
+    getVectorLexicalMatch,
+    sortVectorMemoriesByTime,
+    getVectorMemoryText,
+    getVectorMemoryFingerprint
+} = window.ChatAIVectorMemoryUtils;
+const {
+    normalizeRegexScript,
+    toRegexExportEntry,
+    cloneUiObject,
+    cloneUiValue,
+    stripUiTemplateCodeFence,
+    inferInitialUiTemplateState,
+    normalizeUiTemplate,
+    toUiTemplateExportEntry,
+    sanitizeUiTemplateImportEntry
+} = window.ChatAICharacterNormalizers.createCharacterNormalizers({
+    systemRegexNames: SYSTEM_REGEX_NAMES,
+    cardUtils: window.RPHubCardUtils,
+    generateUUID
+});
+
 // Configure marked to disable indented code blocks
 // This allows indented HTML (like details/summary) to be rendered as HTML instead of code
 marked.use({
@@ -12,99 +108,6 @@ marked.use({
     }
 });
 
-const UiTemplatePending = {
-    template: `
-        <div class="ui-template-pending-card" role="status" aria-live="polite">
-            <div class="ui-template-pending-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm4 3h8M8 12h8M8 16h5">
-                    </path>
-                </svg>
-                <span class="live-dots"><i></i><i></i><i></i></span>
-            </div>
-            <div class="ui-template-pending-content">
-                <div class="ui-template-pending-row">
-                    <span class="ui-template-pending-title">分析中</span>
-                </div>
-            </div>
-        </div>`
-};
-
-const EmbeddedViewContent = {
-    props: {
-        src: String,
-        loading: Boolean,
-        loadingText: String
-    },
-    emits: ['load', 'menu'],
-    template: `
-        <button @click="$emit('menu')"
-            class="md:hidden absolute left-0 top-1/2 transform -translate-y-1/2 z-20 pl-2 pr-1.5 py-3 bg-white/90 backdrop-blur-md text-gray-600 text-xs font-medium rounded-r-xl shadow-lg border border-l-0 border-gray-200 active:scale-95 transition-all flex flex-col items-center gap-1">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-            </svg>
-            <span class="leading-none">返</span>
-            <span class="leading-none">回</span>
-        </button>
-        <div class="flex-1 w-full relative bg-white h-full">
-            <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-gray-50">
-                <div class="flex flex-col items-center">
-                    <svg class="embedded-loading-spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <circle class="embedded-loading-spinner__track" cx="12" cy="12" r="9"></circle>
-                        <circle class="embedded-loading-spinner__arc" cx="12" cy="12" r="9"></circle>
-                    </svg>
-                    <div class="text-gray-500 font-medium">{{ loadingText }}</div>
-                </div>
-            </div>
-            <iframe :src="src" @load="$emit('load')" class="absolute inset-0 w-full h-full border-0"
-                allow="clipboard-write"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
-        </div>`
-};
-
-const GenerationTimer = {
-    props: {
-        waitTime: Number,
-        estimatedTime: Number,
-        remoteEstimatedTime: Number,
-        remote: Boolean
-    },
-    template: `
-        <div class="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono bg-white/50 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/50 animate-fade-in mt-1 shadow-sm typing-timer-badge">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span class="whitespace-nowrap">
-                {{ waitTime }}s
-                <span v-if="estimatedTime || remoteEstimatedTime" class="text-gray-300 mx-0.5">/</span>
-                <span v-if="estimatedTime && !remote">{{ estimatedTime }}s</span>
-                <span v-else-if="remoteEstimatedTime">{{ remoteEstimatedTime }}s</span>
-            </span>
-        </div>`
-};
-
-const SettingsPageHeader = {
-    props: { title: String },
-    emits: ['menu'],
-    template: `
-        <div class="settings-page-header">
-            <div class="flex items-center">
-                <button @click="$emit('menu')" class="mobile-menu-button">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor"><use href="#icon-menu"></use></svg>
-                </button>
-                <h2 class="text-xl md:text-2xl font-bold text-gray-800 flex items-center">
-                    <slot name="icon"></slot>
-                    {{ title }}
-                    <slot name="title-extra"></slot>
-                </h2>
-            </div>
-            <div v-if="$slots.default" class="flex space-x-2 md:space-x-3">
-                <slot></slot>
-            </div>
-        </div>`
-};
-
 createApp({
     components: {
         CustomSelect: window.RPHubCustomSelect,
@@ -116,38 +119,7 @@ createApp({
     setup() {
         const cardUtils = window.RPHubCardUtils;
 
-        const APP_NAME = 'chat-ai';
-        const DEFAULT_CHAT_AI_ROBOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect width="160" height="160" rx="36" fill="#2f3136"/><circle cx="80" cy="54" r="18" fill="#60a5fa" opacity=".95"/><path d="M80 72v12" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/><rect x="32" y="78" width="96" height="58" rx="24" fill="#f8fafc"/><rect x="47" y="93" width="66" height="28" rx="14" fill="#111827"/><circle cx="65" cy="107" r="6" fill="#60a5fa"/><circle cx="95" cy="107" r="6" fill="#60a5fa"/><path d="M64 128h32" stroke="#94a3b8" stroke-width="6" stroke-linecap="round"/><path d="M32 104H20M140 104h-12" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/></svg>`;
-        const DEFAULT_CHAT_AI_AVATAR = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DEFAULT_CHAT_AI_ROBOT_SVG)}`;
-        const CHAT_AI_CHARACTER_CARD_URL = 'assets/defalut/Chat-ai.json';
-        const SIMPLE_CHAT_AI_MODE = true;
-        // 用人格来源生成稳定 ID，让不同 JSON 的人格和聊天上下文完全隔离。
-        const DEFAULT_CHAT_AI_CHARACTER_UUID = CHAT_AI_CHARACTER_CARD_URL === 'assets/defalut/Chat-ai.json'
-            ? 'chat-ai-default'
-            : `chat-ai-default:${CHAT_AI_CHARACTER_CARD_URL}`;
-        const readChatAiCharacterCardSync = (url) => {
-            if (typeof XMLHttpRequest === 'undefined') return null;
-            try {
-                const request = new XMLHttpRequest();
-                request.open('GET', url, false);
-                request.overrideMimeType?.('application/json; charset=utf-8');
-                request.send(null);
-                if ((request.status === 0 || (request.status >= 200 && request.status < 300)) && request.responseText) {
-                    return JSON.parse(request.responseText);
-                }
-            } catch (error) {
-                console.warn('Failed to read chat-ai character card synchronously:', error);
-            }
-            return null;
-        };
-        let simpleChatAiCharacterCard = readChatAiCharacterCardSync(CHAT_AI_CHARACTER_CARD_URL);
-        const getSimpleChatAiCardData = () => {
-            const cardData = simpleChatAiCharacterCard?.data || simpleChatAiCharacterCard || {};
-            return cardData && typeof cardData === 'object' && !Array.isArray(cardData) ? cardData : {};
-        };
-        const DEFAULT_USER_NAME_PLACEHOLDER = '请前往设置自定义你的名称';
-
-        // Default Avatar
+        // 默认头像和旧变量名作为装配层别名，具体值由配置模块统一维护。
         const defaultAvatar = DEFAULT_CHAT_AI_AVATAR;
 
         // Image Compression Utility
@@ -177,66 +149,10 @@ createApp({
             });
         };
 
-        // --- Constants ---
-        const systemRegexNames = ['Auto Replace {{user}}', 'NAI画图正则'];
-        const systemWorldInfoNames = ['自动生图'];
-
-        const IMAGE_GEN_BASE_URL = 'https://nai.sta1n.cn';
-        const DEFAULT_IMAGE_API_URL = 'https://vsllm.com/v1';
-        const DEFAULT_IMAGE_CHAT_MODEL = 'gpt-image-2-chat';
-        const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
-        const MAX_PENDING_REFERENCE_IMAGES = 4;
-        const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
-
-        // --- Default API Configuration ---
-        const DEFAULT_API_PROVIDER_ID = 'sta1n';
-        const DEFAULT_API_CONFIG = {
-            apiUrl: 'https://cdn.sta1n.cn/v1',
-            apiKey: '',
-            model: '', // Default selected
-            qualityModel: '',
-            balancedModel: '',
-            fastModel: ''
-        };
-
-        const apiProviderOptions = [
-            {
-                id: 'sta1n',
-                name: 'STA1N API',
-                apiUrl: 'https://cdn.sta1n.cn/v1',
-                icon: 'https://img.cdn1.vip/i/69c18cc07538b_1774292160.webp'
-            },
-            {
-                id: 'deepseek',
-                name: 'DeepSeek',
-                apiUrl: 'https://api.deepseek.com/v1',
-                icon: 'https://www.deepseek.com/favicon.ico'
-            },
-            {
-                id: 'openrouter',
-                name: 'OpenRouter',
-                apiUrl: 'https://openrouter.ai/api/v1',
-                icon: 'https://openrouter.ai/favicon.ico'
-            },
-            {
-                id: 'yintu',
-                name: 'Yintu API',
-                apiUrl: 'https://api.yintu.cc/v1',
-                icon: 'https://yintu.cc/logo.png'
-            },
-            {
-                id: 'vsllm',
-                name: 'VSLLM',
-                apiUrl: 'https://vsllm.com/v1',
-                icon: 'https://img.scdn.io/i/6a05a96892419_1778755944.webp'
-            },
-            {
-                id: 'siliconflow',
-                name: 'SiliconFlow',
-                apiUrl: 'https://api.siliconflow.cn/v1',
-                icon: 'https://siliconflow.cn/favicon.ico'
-            }
-        ];
+        // 内部标准化逻辑继续使用既有命名，数据来源统一切换到配置模块。
+        const systemRegexNames = SYSTEM_REGEX_NAMES;
+        const systemWorldInfoNames = SYSTEM_WORLD_INFO_NAMES;
+        const apiProviderOptions = API_PROVIDER_OPTIONS;
 
         // --- State ---
         const globalConfirmModal = ref({
@@ -577,11 +493,7 @@ createApp({
         const loadChatAiCharacterCard = async () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
             try {
-                const response = await fetch(CHAT_AI_CHARACTER_CARD_URL, { cache: 'no-store' });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const content = await response.json();
-                if (!content || typeof content !== 'object') return;
-                simpleChatAiCharacterCard = content;
+                await defaultCharacterService.load();
                 const builtinCharacter = characters.value.find(char => char?.uuid === DEFAULT_CHAT_AI_CHARACTER_UUID);
                 if (builtinCharacter) Object.assign(builtinCharacter, createDefaultChatAiCharacter());
             } catch (error) {
@@ -856,50 +768,14 @@ createApp({
         const showAddCharacterMenu = ref(false);
         const currentCharacterIndex = ref(-1);
 
-        const createDefaultChatAiCharacter = () => {
-            const cardData = getSimpleChatAiCardData();
-            const extensions = cardData.extensions || {};
-            const characterBook = cardData.character_book || simpleChatAiCharacterCard?.character_book || null;
-            let worldInfoEntries = [];
-            if (Array.isArray(characterBook?.entries)) {
-                worldInfoEntries = characterBook.entries;
-            } else if (characterBook?.entries && typeof characterBook.entries === 'object') {
-                worldInfoEntries = Object.values(characterBook.entries);
-            } else if (Array.isArray(characterBook)) {
-                worldInfoEntries = characterBook;
-            }
-
-            const regexScripts = extensions.regex_scripts || simpleChatAiCharacterCard?.extensions?.regex_scripts || [];
-            const uiTemplates = cardData.uiTemplates
-                || cardData.ui_templates
-                || extensions.ui_templates
-                || extensions.rp_hub_ui_templates
-                || [];
-            // 默认卡也完整保留标准角色字段，后续由当前角色卡统一组装提示词。
-            const personality = cardData.personality || '';
-
-            return {
-                name: cardData.name || cardData.char_name || APP_NAME,
-                description: cardData.description || cardData.char_persona || '通用 AI 助手',
-                first_mes: cardData.first_mes || '',
-                avatar: DEFAULT_CHAT_AI_AVATAR,
-                personality,
-                scenario: cardData.scenario || '',
-                system_prompt: cardData.system_prompt || '',
-                post_history_instructions: cardData.post_history_instructions || '',
-                creator_notes: cardData.creator_notes || cardData.creatorcomment || cardData.creator_comment || '',
-                mes_example: cardData.mes_example || '',
-                alternate_greetings: Array.isArray(cardData.alternate_greetings) ? cardData.alternate_greetings : [],
-                worldInfo: worldInfoEntries.map(entry => normalizeWorldInfoEntry({ ...entry, scope: 'character' })).filter(entry => entry.scope !== 'global'),
-                regexScripts: Array.isArray(regexScripts) ? regexScripts.map(script => normalizeRegexScript({ ...script, scope: 'character' }, 'character')).filter(script => script.scope !== 'global') : [],
-                uiTemplates: Array.isArray(uiTemplates) ? uiTemplates.map(template => normalizeUiTemplate({ ...sanitizeUiTemplateImportEntry(template), id: generateUUID(), scope: 'character' })) : [],
-                recentGenerationTimes: [],
-                uuid: DEFAULT_CHAT_AI_CHARACTER_UUID,
-                createdAt: 0,
-                isBuiltinChatAi: true,
-                defaultCardSource: CHAT_AI_CHARACTER_CARD_URL
-            };
-        };
+        // 默认人格模块只负责卡片映射，应用层注入现有标准化规则以保持行为一致。
+        const createDefaultChatAiCharacter = () => defaultCharacterService.createCharacter({
+            normalizeWorldInfoEntry,
+            normalizeRegexScript,
+            normalizeUiTemplate,
+            sanitizeUiTemplateImportEntry,
+            generateUUID
+        });
 
         const ensureSimpleChatAiCharacter = () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
@@ -1558,8 +1434,6 @@ createApp({
             return `${safeUuid}:vector`;
         };
 
-        const isEmbeddingLike = (value) => Array.isArray(value) || ArrayBuffer.isView(value);
-
         const hasVectorEmbedding = (memory) => (
             (isEmbeddingLike(memory?.embedding) && memory.embedding.length > 0)
             || (typeof memory?.embeddingQ === 'string' && memory.embeddingQ.length > 0)
@@ -1850,245 +1724,10 @@ createApp({
         });
 
 
-        // --- Persistence (IndexedDB) ---
-        const dbName = 'RPHubDB';
-        const legacyDbName = String.fromCharCode(83, 105, 108, 108, 121, 84, 97, 118, 101, 114, 110, 68, 66);
-        const storagePrefix = 'rp_hub_';
-        const legacyStoragePrefix = String.fromCharCode(115, 105, 108, 108, 121, 95, 116, 97, 118, 101, 114, 110, 95);
-        const dbVersion = 1;
-        let db = null;
-        let legacyDb = null;
-
-        const openAppDB = (name) => {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(name, dbVersion);
-                request.onerror = (event) => reject('DB Error: ' + event.target.error);
-                request.onsuccess = (event) => {
-                    resolve(event.target.result);
-                };
-                request.onupgradeneeded = (event) => {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains('store')) {
-                        db.createObjectStore('store');
-                    }
-                };
-            });
-        };
-
-        const initDB = async () => {
-            db = await openAppDB(dbName);
-            try {
-                const dbList = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : null;
-                const shouldOpenLegacy = !dbList || dbList.some(item => item && item.name === legacyDbName);
-                if (shouldOpenLegacy) {
-                    legacyDb = await openAppDB(legacyDbName);
-                }
-            } catch (e) {
-                console.warn('Legacy DB check failed:', e);
-            }
-            return db;
-        };
-
-        const isDatabaseClosingError = (error) => {
-            const message = String(error?.message || error || '');
-            return /connection is closing|database is closing|close pending/i.test(message);
-        };
-
-        const reopenMainDB = async () => {
-            try { if (db) db.close(); } catch (_) { }
-            db = await openAppDB(dbName);
-            return db;
-        };
-
-        const unwrapForStorage = (value, seen = new WeakMap()) => {
-            if (value === null || typeof value !== 'object') return value;
-
-            const raw = typeof Vue?.toRaw === 'function' ? Vue.toRaw(value) : value;
-            if (raw === null || typeof raw !== 'object') return raw;
-
-            if (seen.has(raw)) return seen.get(raw);
-            if (raw instanceof Date) return raw.toISOString();
-            if (ArrayBuffer.isView(raw)) return Array.from(raw);
-            if (raw instanceof ArrayBuffer) return Array.from(new Uint8Array(raw));
-
-            if (Array.isArray(raw)) {
-                const arr = [];
-                seen.set(raw, arr);
-                raw.forEach((item, index) => {
-                    const clonedItem = unwrapForStorage(item, seen);
-                    arr[index] = clonedItem === undefined ? null : clonedItem;
-                });
-                return arr;
-            }
-
-            const obj = {};
-            seen.set(raw, obj);
-            Object.keys(raw).forEach(key => {
-                const item = raw[key];
-                if (typeof item === 'function' || typeof item === 'undefined') return;
-                obj[key] = unwrapForStorage(item, seen);
-            });
-            return obj;
-        };
-
-        const cloneForStorage = (value) => {
-            const plainValue = unwrapForStorage(value);
-            if (typeof structuredClone === 'function') {
-                try {
-                    return structuredClone(plainValue);
-                } catch (_) { }
-            }
-            return JSON.parse(JSON.stringify(plainValue));
-        };
-
-        const storageKey = (name) => `${storagePrefix}${name}`;
-        const legacyStorageKey = (name) => `${legacyStoragePrefix}${name}`;
-        const scopedStorageKey = (name, id) => `${storageKey(name)}_${id}`;
-        const legacyScopedStorageKey = (name, id) => `${legacyStorageKey(name)}_${id}`;
-
-        const dbSetTo = (targetDb, key, value, options = {}) => {
-            return new Promise((resolve, reject) => {
-                if (!targetDb) return reject('DB not initialized');
-                const transaction = targetDb.transaction(['store'], 'readwrite');
-                const store = transaction.objectStore('store');
-                // Clone to plain object to avoid Proxy issues unless the caller already did it.
-                const request = store.put(options.clone === false ? value : cloneForStorage(value), key);
-                request.onsuccess = () => resolve();
-                request.onerror = (event) => reject(event.target.error);
-            });
-        };
-
-        const dbSet = async (key, value, options = {}) => {
-            try {
-                return await dbSetTo(db, key, value, options);
-            } catch (error) {
-                if (!isDatabaseClosingError(error)) throw error;
-                await reopenMainDB();
-                return dbSetTo(db, key, value, options);
-            }
-        };
-
-        const dbGetFrom = (targetDb, key) => {
-            return new Promise((resolve, reject) => {
-                if (!targetDb) return resolve(undefined);
-                const transaction = targetDb.transaction(['store'], 'readonly');
-                const store = transaction.objectStore('store');
-                const request = store.get(key);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = (event) => reject(event.target.error);
-            });
-        };
-
-        const dbGet = async (key) => {
-            try {
-                return await dbGetFrom(db, key);
-            } catch (error) {
-                if (!isDatabaseClosingError(error)) throw error;
-                await reopenMainDB();
-                return dbGetFrom(db, key);
-            }
-        };
-
-        const dbGetWithLegacy = async (key, oldKey = null) => {
-            const value = await dbGet(key);
-            if (value !== undefined) return value;
-            if (!oldKey || !legacyDb) return undefined;
-            const legacyValue = await dbGetFrom(legacyDb, oldKey);
-            if (legacyValue !== undefined) {
-                await dbSet(key, legacyValue);
-            }
-            return legacyValue;
-        };
-
-        const setStoredValue = (name, value, options = {}) => dbSet(storageKey(name), value, options);
-        const getStoredValue = (name) => dbGetWithLegacy(storageKey(name), legacyStorageKey(name));
-        const setScopedStoredValue = (name, id, value, options = {}) => dbSet(scopedStorageKey(name, id), value, options);
-        const getScopedStoredValue = (name, id) => dbGetWithLegacy(scopedStorageKey(name, id), legacyScopedStorageKey(name, id));
-        const CHAT_SESSION_TITLE_MAX_LENGTH = 24;
-        const CHAT_SESSION_PREVIEW_MAX_LENGTH = 42;
-
-        const getConversationStorageScopeId = (characterId, sessionId) => {
-            if (!characterId) return null;
-            return sessionId ? `${characterId}_${sessionId}` : characterId;
-        };
-
+        // --- Persistence and conversation sessions ---
         const getActiveConversationMemoryScopeId = (characterId = currentCharacter.value?.uuid) => (
             getConversationStorageScopeId(characterId, currentConversationId.value)
         );
-
-        const truncateChatSessionText = (text, maxLength) => {
-            const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-            if (!normalized) return '';
-            return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
-        };
-
-        const getChatMessageSummaryText = (message) => {
-            const content = parseCot(message?.content || '').main || message?.content || '';
-            return String(content)
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/[#*_`~>\[\](){}|]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-        };
-
-        const buildChatSessionMeta = (base = {}, messages = [], char = null) => {
-            const now = Date.now();
-            const dialogMessages = (Array.isArray(messages) ? messages : [])
-                .filter(message => message && ['user', 'assistant'].includes(message.role));
-            const firstUserText = dialogMessages
-                .filter(message => message.role === 'user')
-                .map(getChatMessageSummaryText)
-                .find(Boolean);
-            const latestText = [...dialogMessages]
-                .reverse()
-                .map(getChatMessageSummaryText)
-                .find(Boolean);
-            const titleSource = firstUserText || base.title || (char?.name ? `${char.name}的新对话` : '新对话');
-            const createdAt = Number(base.createdAt) || now;
-
-            return {
-                id: String(base.id || generateUUID()),
-                title: truncateChatSessionText(titleSource, CHAT_SESSION_TITLE_MAX_LENGTH) || '新对话',
-                preview: truncateChatSessionText(latestText || base.preview || '暂无内容', CHAT_SESSION_PREVIEW_MAX_LENGTH),
-                createdAt,
-                updatedAt: Number(base.updatedAt) || createdAt,
-                messageCount: dialogMessages.length,
-                legacy: base.legacy === true
-            };
-        };
-
-        const sortChatSessions = (sessions = []) => [...sessions].sort((a, b) => (
-            (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)
-            || (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
-        ));
-
-        const normalizeChatSessionMeta = (session = {}, char = null) => {
-            const normalized = buildChatSessionMeta(session, [], char);
-            normalized.updatedAt = Number(session.updatedAt) || normalized.createdAt;
-            normalized.messageCount = Number.isFinite(Number(session.messageCount))
-                ? Math.max(0, Number(session.messageCount))
-                : 0;
-            return normalized;
-        };
-
-        const normalizeChatSessionState = (rawState, char = null) => {
-            const rawSessions = Array.isArray(rawState)
-                ? rawState
-                : (Array.isArray(rawState?.sessions) ? rawState.sessions : []);
-            const seen = new Set();
-            const sessions = [];
-            rawSessions.forEach(item => {
-                const session = normalizeChatSessionMeta(item, char);
-                if (!session.id || seen.has(session.id)) return;
-                seen.add(session.id);
-                sessions.push(session);
-            });
-            const activeId = typeof rawState?.activeId === 'string' ? rawState.activeId : null;
-            return {
-                activeId,
-                sessions: sortChatSessions(sessions)
-            };
-        };
 
         const getChatSessionStatePayload = (activeId = currentConversationId.value, sessions = chatSessions.value) => ({
             activeId,
@@ -2136,107 +1775,11 @@ createApp({
             return sessionId;
         };
 
-        const formatChatSessionTime = (timestamp) => {
-            const time = Number(timestamp);
-            if (!Number.isFinite(time) || time <= 0) return '';
-            const now = Date.now();
-            const diffMs = Math.max(0, now - time);
-            const minute = 60 * 1000;
-            const hour = 60 * minute;
-            if (diffMs < minute) return '刚刚';
-            if (diffMs < hour) return `${Math.floor(diffMs / minute)}分钟前`;
-            const date = new Date(time);
-            const today = new Date(now);
-            if (date.toDateString() === today.toDateString()) {
-                return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-            }
-            if (date.getFullYear() === today.getFullYear()) {
-                return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
-            }
-            return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
-        };
-        const readUsageNumber = (...values) => {
-            for (const value of values) {
-                const number = Number(value);
-                if (Number.isFinite(number) && number >= 0) return Math.round(number);
-            }
-            return null;
-        };
-        const getApiUsagePayload = (data) => {
-            if (data?.usage && typeof data.usage === 'object') return data.usage;
-            if (data?.usageMetadata && typeof data.usageMetadata === 'object') return data.usageMetadata;
-            return null;
-        };
-        const extractApiUsageFromText = (rawText) => {
-            try {
-                return getApiUsagePayload(JSON.parse(rawText));
-            } catch (_) { }
-            let usage = null;
-            String(rawText || '').split(/\r?\n/).forEach(line => {
-                const payload = line.trim().replace(/^data:\s*/, '');
-                if (!payload || payload === '[DONE]') return;
-                try {
-                    usage = getApiUsagePayload(JSON.parse(payload)) || usage;
-                } catch (_) { }
-            });
-            return usage;
-        };
-        const normalizeApiUsage = (usage) => {
-            const source = usage && typeof usage === 'object' ? usage : {};
-            const promptDetails = source.prompt_tokens_details || source.input_tokens_details || {};
-            const completionDetails = source.completion_tokens_details || source.output_tokens_details || {};
-            const cacheReadTokens = readUsageNumber(
-                promptDetails.cached_tokens,
-                promptDetails.cache_read_tokens,
-                source.cache_read_input_tokens,
-                source.cache_read_tokens,
-                source.cachedContentTokenCount,
-                source.cached_content_token_count
-            );
-            const reportedCacheWriteTokens = readUsageNumber(
-                promptDetails.cache_creation_tokens,
-                promptDetails.cache_write_tokens,
-                source.cache_creation_input_tokens,
-                source.cache_creation_tokens,
-                source.cache_write_input_tokens,
-                source.cache_write_tokens
-            );
-            const cacheWriteTokens = reportedCacheWriteTokens ?? 0;
-            const promptTokens = readUsageNumber(
-                source.prompt_tokens,
-                source.promptTokenCount,
-                source.inputTokenCount
-            );
-            const nativeInputTokens = readUsageNumber(source.input_tokens);
-            const inputTokens = promptTokens !== null
-                ? promptTokens
-                : nativeInputTokens !== null
-                    ? nativeInputTokens + (cacheReadTokens || 0) + (cacheWriteTokens || 0)
-                    : null;
-            const outputTokens = readUsageNumber(
-                source.completion_tokens,
-                source.output_tokens,
-                source.candidatesTokenCount,
-                source.outputTokenCount
-            );
-            const reasoningTokens = readUsageNumber(
-                completionDetails.reasoning_tokens,
-                source.reasoning_tokens,
-                source.thoughtsTokenCount
-            );
-            let totalTokens = readUsageNumber(source.total_tokens, source.totalTokenCount);
-            if (totalTokens === null && (inputTokens !== null || outputTokens !== null)) {
-                totalTokens = (inputTokens || 0) + (outputTokens || 0);
-            }
-            const reported = [inputTokens, outputTokens, totalTokens, cacheReadTokens, reasoningTokens, reportedCacheWriteTokens]
-                .some(value => value !== null);
-            return { inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, reported };
-        };
         let tokenUsageSaveQueue = Promise.resolve();
         const saveTokenUsageHistoryNow = () => {
             const snapshot = cloneForStorage(tokenUsageHistory.value);
             const saveTask = async () => {
-                if (!db) await initDB();
+                await initDB();
                 await setStoredValue('token_usage_history', snapshot, { clone: false });
             };
             tokenUsageSaveQueue = tokenUsageSaveQueue.then(saveTask, saveTask);
@@ -2301,7 +1844,7 @@ createApp({
                     let lastError = null;
                     for (let attempt = 1; attempt <= 3; attempt++) {
                         try {
-                            if (!db) await initDB();
+                            await initDB();
                             await setScopedStoredValue('chat_session', sessionStorageId, historyToSave, { clone: false });
                             await setScopedStoredValue('chat_sessions', characterId, sessionStateToSave, { clone: false });
                             return true;
@@ -2342,13 +1885,13 @@ createApp({
 
         const saveMemorySettingsNow = async () => {
             if (!_initComplete) return;
-            if (!db) await initDB();
+            await initDB();
             await setStoredValue('memory_settings', cloneForStorage(memorySettings), { clone: false });
         };
 
         const saveMemoriesNow = async () => {
             if (!_memoriesLoaded || !currentCharacter.value?.uuid) return;
-            if (!db) await initDB();
+            await initDB();
             const memoryScopeId = getActiveConversationMemoryScopeId();
             if (!memoryScopeId) return;
             await setScopedStoredValue('memories', memoryScopeId, await compactMemoriesForStorageAsync(memories.value), { clone: false });
@@ -2356,7 +1899,7 @@ createApp({
 
         const saveClassicMemoriesNow = async () => {
             if (!_classicMemoriesLoaded || !currentCharacter.value?.uuid) return;
-            if (!db) await initDB();
+            await initDB();
             const memoryScopeId = getActiveConversationMemoryScopeId();
             if (!memoryScopeId) return;
             await setScopedStoredValue('classic_memories', memoryScopeId, cloneForStorage(classicMemories.value), { clone: false });
@@ -2365,7 +1908,7 @@ createApp({
         const saveData = async (options = {}) => {
             const { saveMemories = true } = options;
             try {
-                if (!db) await initDB();
+                await initDB();
                 settings.contextSize = MAX_CONTEXT_SIZE;
                 normalizeActiveToolAggressivenessSettings();
                 await setStoredValue('characters', characters.value);
@@ -2409,7 +1952,7 @@ createApp({
 
         const saveConversationMutationNow = async ({ saveTemplateRuntime = false } = {}) => {
             try {
-                if (!db) await initDB();
+                await initDB();
                 await saveChatHistoryNow();
                 await saveMemoriesNow();
                 await saveClassicMemoriesNow();
@@ -2421,26 +1964,6 @@ createApp({
                 console.error('Save conversation mutation failed:', e);
             }
         };
-
-        const dbDeleteFrom = (targetDb, key) => {
-            return new Promise((resolve, reject) => {
-                if (!targetDb) return resolve();
-                const transaction = targetDb.transaction(['store'], 'readwrite');
-                const store = transaction.objectStore('store');
-                const request = store.delete(key);
-                request.onsuccess = () => resolve();
-                request.onerror = (event) => reject(event.target.error);
-            });
-        };
-
-        const dbDelete = (key) => dbDeleteFrom(db, key);
-
-        const dbDeleteWithLegacy = async (key, oldKey = null) => {
-            await dbDelete(key);
-            if (oldKey && legacyDb) await dbDeleteFrom(legacyDb, oldKey);
-        };
-
-        const deleteScopedStoredValue = (name, id) => dbDeleteWithLegacy(scopedStorageKey(name, id), legacyScopedStorageKey(name, id));
 
         const removeUiTemplateRuntimeForConversation = (char, sessionId) => {
             const key = getConversationStorageScopeId(char?.uuid, sessionId);
@@ -2885,36 +2408,6 @@ createApp({
             { value: 'global', label: '全局生效' }
         ]);
 
-        const normalizeRegexScript = (script = {}, fallbackScope = 'character') => {
-            const normalized = { ...script };
-            if (normalized.disabled !== undefined) {
-                normalized.enabled = !normalized.disabled;
-            } else if (normalized.enabled === undefined) {
-                normalized.enabled = true;
-            }
-            if (!normalized.name && normalized.scriptName) normalized.name = normalized.scriptName;
-            if (!normalized.regex && normalized.findRegex) normalized.regex = normalized.findRegex;
-            if (!normalized.replacement && normalized.replaceString) normalized.replacement = normalized.replaceString;
-            if (!normalized.flags && normalized.regexFlags) normalized.flags = normalized.regexFlags;
-            if (!normalized.flags) normalized.flags = 'g';
-            if (!Array.isArray(normalized.placement)) normalized.placement = [1, 2];
-            if (normalized.markdownOnly === undefined) normalized.markdownOnly = false;
-            if (normalized.promptOnly === undefined) normalized.promptOnly = false;
-            if (normalized.markdownOnly && normalized.promptOnly) normalized.promptOnly = false;
-            if (normalized.runOnEdit === undefined) normalized.runOnEdit = false;
-            if (normalized.minDepth === undefined) normalized.minDepth = null;
-            if (normalized.maxDepth === undefined) normalized.maxDepth = null;
-            normalized.scope = normalized.scope === 'global' || fallbackScope === 'global' || systemRegexNames.includes(normalized.name || normalized.scriptName)
-                ? 'global'
-                : 'character';
-            delete normalized.disabled;
-            return normalized;
-        };
-
-        const toRegexExportEntry = (script = {}, fallbackScope = 'character') => (
-            cardUtils.toRegexExportEntry(normalizeRegexScript(script, fallbackScope))
-        );
-
         const combineRegexScriptsForCharacter = (char = currentCharacter.value) => {
             const globalScripts = JSON.parse(JSON.stringify(globalRegexScripts.value || []))
                 .map(script => normalizeRegexScript(script, 'global'));
@@ -2933,75 +2426,6 @@ createApp({
         const defaultUiTemplateHtml = '';
 
         const defaultUiTemplateVariables = {};
-
-        const cloneUiObject = (value) => JSON.parse(JSON.stringify(value || {}));
-        const cloneUiValue = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
-
-        const stripUiTemplateCodeFence = (value) => {
-            const text = String(value || '').trim();
-            const fenced = text.match(/^```[a-zA-Z0-9_-]*\s*\n?([\s\S]*?)\s*```$/);
-            return (fenced ? fenced[1] : text).trim();
-        };
-
-        const inferInitialUiTemplateState = (template = {}, variableState = null) => {
-            if (template.initialVariableState && typeof template.initialVariableState === 'object') {
-                return cloneUiObject(template.initialVariableState);
-            }
-            let baseState = cloneUiObject(variableState || template.variableState || template.variables || defaultUiTemplateVariables);
-            const logs = Array.isArray(template.changeLog) ? [...template.changeLog].sort((a, b) => (a.time || 0) - (b.time || 0)) : [];
-            const initializedKeys = new Set();
-            logs.forEach(log => {
-                Object.entries(log.changes || {}).forEach(([key, change]) => {
-                    if (!initializedKeys.has(key) && change && Object.prototype.hasOwnProperty.call(change, 'from')) {
-                        if (key === '$root') {
-                            baseState = cloneUiValue(change.from) || {};
-                        } else {
-                            baseState[key] = change.from;
-                        }
-                        initializedKeys.add(key);
-                    }
-                });
-            });
-            return baseState;
-        };
-
-        const normalizeUiTemplate = (template = {}) => {
-            const variableState = (template.variableState && typeof template.variableState === 'object')
-                ? cloneUiObject(template.variableState)
-                : (template.variables && typeof template.variables === 'object'
-                    ? cloneUiObject(template.variables)
-                    : (template.initialVariableState && typeof template.initialVariableState === 'object'
-                        ? cloneUiObject(template.initialVariableState)
-                        : { ...defaultUiTemplateVariables }));
-            return {
-                id: template.id || generateUUID(),
-                name: template.name || 'UI模板',
-                enabled: template.enabled !== false,
-                scope: template.scope === 'global' ? 'global' : 'character',
-                order: Number.isFinite(Number(template.order)) ? Number(template.order) : 100,
-                placement: ['top', 'bottom'].includes(template.placement) ? template.placement : 'bottom',
-                htmlTemplate: stripUiTemplateCodeFence(template.htmlTemplate || template.template || defaultUiTemplateHtml),
-                initialVariableState: inferInitialUiTemplateState(template, variableState),
-                variableState,
-                variableSchema: (template.variableSchema && (typeof template.variableSchema === 'object' || typeof template.variableSchema === 'string')) ? template.variableSchema : '',
-                changeLog: Array.isArray(template.changeLog) ? template.changeLog : [],
-                runtimeByCharacter: (template.runtimeByCharacter && typeof template.runtimeByCharacter === 'object') ? cloneUiObject(template.runtimeByCharacter) : {},
-                updateMode: template.updateMode || 'merge'
-            };
-        };
-
-        const toUiTemplateExportEntry = (template = {}) => {
-            const normalized = normalizeUiTemplate(template);
-            return cardUtils.toUiTemplateExportEntry(normalized);
-        };
-
-        const sanitizeUiTemplateImportEntry = (template = {}) => {
-            const { changeLog, runtimeByCharacter, variableState, model, version, ...cleanTemplate } = template || {};
-            if (!cleanTemplate.initialVariableState && !cleanTemplate.variables && variableState && typeof variableState === 'object') {
-                cleanTemplate.initialVariableState = cloneUiObject(variableState);
-            }
-            return cleanTemplate;
-        };
 
         const ensureCurrentUiTemplates = () => {
             if (!currentCharacter.value) return [];
@@ -4210,59 +3634,6 @@ ${content}
             const contentText = String(content || '');
             if (!reasoningText) return contentText;
             return `<thinking>\n${reasoningText}\n</thinking>${contentText ? `\n\n${contentText}` : ''}`;
-        };
-
-        const stringifyErrorDetail = (detail) => {
-            if (detail === null || detail === undefined) return '';
-            if (typeof detail === 'string') return detail;
-            try {
-                return JSON.stringify(detail, null, 2);
-            } catch (e) {
-                return String(detail);
-            }
-        };
-
-        const getApiErrorStatus = (payload, fallbackStatus) => {
-            const candidates = [
-                payload?.status,
-                payload?.statusCode,
-                payload?.code,
-                payload?.error?.status,
-                payload?.error?.statusCode,
-                payload?.error?.code,
-                fallbackStatus
-            ];
-            return candidates.find(value => value !== undefined && value !== null && value !== '' && /^\d+$/.test(String(value))) || '';
-        };
-
-        const formatApiErrorMessage = (status, detail) => {
-            const lines = [];
-            if (status !== undefined && status !== null && status !== '') {
-                lines.push(`API Error: ${status}`);
-            }
-            const detailText = stringifyErrorDetail(detail).trim();
-            lines.push(detailText || '请求失败');
-            return lines.join('\n');
-        };
-
-        const extractApiErrorMessage = (payload, fallbackStatus = '') => {
-            if (!payload || typeof payload !== 'object') return '';
-            const error = payload.error;
-            const status = getApiErrorStatus(payload, fallbackStatus);
-            if (typeof error === 'string') return formatApiErrorMessage(status, error);
-            if (error && typeof error === 'object') {
-                const detail = error.message || error.detail || payload.message || payload.detail || error;
-                return formatApiErrorMessage(status, detail);
-            }
-            const detail = payload.message || payload.detail;
-            if (!detail) return '';
-            return formatApiErrorMessage(status, detail);
-        };
-
-        const throwApiError = (message) => {
-            const error = new Error(message);
-            error.isApiError = true;
-            throw error;
         };
 
         const activeNativeReasoning = computed(() => {
@@ -7335,82 +6706,6 @@ ${content}
 
         const extractMemoryFromChat = () => startAutomaticMemoryPatrol();
 
-        const splitLongMemoryParagraph = (paragraph, maxLength = MEMORY_VECTOR_MAX_PARAGRAPH_LENGTH) => {
-            const text = String(paragraph || '').trim();
-            if (!text) return [];
-            if (text.length <= maxLength) return [text];
-
-            const parts = [];
-            let remaining = text;
-            while (remaining.length > maxLength) {
-                const windowText = remaining.slice(0, maxLength);
-                const breakAt = Math.max(
-                    windowText.lastIndexOf('。'),
-                    windowText.lastIndexOf('！'),
-                    windowText.lastIndexOf('？'),
-                    windowText.lastIndexOf('.'),
-                    windowText.lastIndexOf('!'),
-                    windowText.lastIndexOf('?'),
-                    windowText.lastIndexOf('\n')
-                );
-                const cutAt = breakAt > Math.floor(maxLength * 0.55) ? breakAt + 1 : maxLength;
-                parts.push(remaining.slice(0, cutAt).trim());
-                remaining = remaining.slice(cutAt).trim();
-            }
-            if (remaining) parts.push(remaining);
-            return parts.filter(Boolean);
-        };
-
-        const splitMemoryParagraphs = (text) => {
-            const cleanText = String(text || '')
-                .replace(/\r\n/g, '\n')
-                .replace(/\n{3,}/g, '\n\n')
-                .trim();
-            if (!cleanText) return [];
-
-            const rawParagraphs = cleanText
-                .split(/\n\s*\n/g)
-                .map(p => p.trim())
-                .filter(Boolean);
-
-            return rawParagraphs.flatMap(paragraph => splitLongMemoryParagraph(paragraph));
-        };
-
-        const mergeSmallMemoryParagraphs = (paragraphs, maxLength = MEMORY_VECTOR_MERGE_MAX_LENGTH) => {
-            const merged = [];
-            let current = null;
-
-            const flush = () => {
-                if (!current) return;
-                merged.push(current);
-                current = null;
-            };
-
-            paragraphs.forEach((paragraph, index) => {
-                const text = String(paragraph || '').trim();
-                if (!text) return;
-
-                const paragraphNo = index + 1;
-                if (!current) {
-                    current = { text, start: paragraphNo, end: paragraphNo };
-                    return;
-                }
-
-                const candidateText = `${current.text}\n\n${text}`;
-                if (candidateText.length <= maxLength) {
-                    current.text = candidateText;
-                    current.end = paragraphNo;
-                    return;
-                }
-
-                flush();
-                current = { text, start: paragraphNo, end: paragraphNo };
-            });
-
-            flush();
-            return merged;
-        };
-
         const getMemoryTurnForChunk = (chunkEndIdx) => getConversationTurnAtIndex(chunkEndIdx);
 
         const buildVectorMemoryFragments = (messagesArray, chunkEndIdx, turnOverride = null) => {
@@ -7479,32 +6774,6 @@ ${content}
             return fragments;
         };
 
-        const normalizeEmbedding = (embedding) => {
-            const rawVector = isEmbeddingLike(embedding)
-                ? embedding
-                : (isEmbeddingLike(embedding?.values) ? embedding.values : []);
-            return rawVector
-                .map(v => Number(v))
-                .filter(v => Number.isFinite(v));
-        };
-
-        const cosineSimilarity = (a, b) => {
-            if (!isEmbeddingLike(a) || !isEmbeddingLike(b) || a.length === 0 || b.length === 0) return -1;
-            const length = Math.min(a.length, b.length);
-            let dot = 0;
-            let normA = 0;
-            let normB = 0;
-            for (let i = 0; i < length; i++) {
-                const av = Number(a[i]) || 0;
-                const bv = Number(b[i]) || 0;
-                dot += av * bv;
-                normA += av * av;
-                normB += bv * bv;
-            }
-            if (normA === 0 || normB === 0) return -1;
-            return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-        };
-
         const requestMemoryEmbeddings = async (inputs, signal) => {
             const model = getMemoryEmbeddingModel();
             if (!settings.apiUrl || !settings.apiKey) throw new Error('请先配置 API 地址和 Key');
@@ -7553,17 +6822,6 @@ ${content}
                 detail: `${normalizedInputs.length} 条输入`
             });
             return vectors;
-        };
-
-        const normalizeVectorMemoryFingerprintText = (text) => {
-            return String(text || '')
-                .replace(/\s+/g, '')
-                .replace(/[，。、“”‘’：；！？,.!?;:"'`~]/g, '');
-        };
-
-        const getVectorMemoryContentFingerprint = (text) => {
-            const normalized = normalizeVectorMemoryFingerprintText(text);
-            return normalized.length >= 80 ? normalized.slice(0, 1000) : '';
         };
 
         const getVectorFragmentFingerprint = (fragment) => {
@@ -7762,92 +7020,6 @@ ${content}
                     return `${label}：用户：${query}`;
                 })
             ].filter(Boolean).join('\n\n');
-        };
-
-        const extractVectorQueryTerms = (text) => {
-            const normalized = String(text || '')
-                .replace(/[^\p{Script=Han}A-Za-z0-9_]+/gu, ' ')
-                .trim();
-            if (!normalized) return [];
-
-            const stopTerms = new Set([
-                '是不是', '有没有', '为什么', '怎么样', '怎么办', '什么', '这个', '那个',
-                '还是', '还在', '还会', '了吗', '吗', '呢', '啊', '吧', '的', '了', '我', '你', '她', '他'
-            ]);
-            const terms = new Set();
-
-            normalized.split(/\s+/).filter(Boolean).forEach(part => {
-                if (/^[A-Za-z0-9_]{2,}$/.test(part)) {
-                    terms.add(part.toLowerCase());
-                    return;
-                }
-
-                const han = part.replace(/[^\p{Script=Han}]/gu, '');
-                if (han.length >= 2) {
-                    for (let size = Math.min(4, han.length); size >= 2; size--) {
-                        for (let i = 0; i <= han.length - size; i++) {
-                            const term = han.slice(i, i + size);
-                            if (!stopTerms.has(term)) terms.add(term);
-                        }
-                    }
-                } else if (han.length === 1 && !stopTerms.has(han)) {
-                    terms.add(han);
-                }
-            });
-
-            return Array.from(terms)
-                .filter(term => term.length > 0 && !stopTerms.has(term))
-                .sort((a, b) => b.length - a.length)
-                .slice(0, 20);
-        };
-
-        const getVectorLexicalMatch = (memory, queryTerms) => {
-            if (!queryTerms.length) return { hits: 0, boost: 0, matched: [] };
-            const text = String(`${memory.sourceText || ''}\n${memory.summary || ''}`).toLowerCase();
-            const matched = queryTerms.filter(term => text.includes(term.toLowerCase()));
-            return {
-                hits: matched.length,
-                boost: Math.min(0.08, matched.length * 0.015),
-                matched
-            };
-        };
-
-        const sortVectorMemoriesByTime = (items) => {
-            const orderNumber = (value, fallback) => {
-                if (value === null || value === undefined || value === '') return fallback;
-                const number = Number(value);
-                return Number.isFinite(number) ? number : fallback;
-            };
-
-            return [...items].sort((a, b) => {
-                const aTurn = orderNumber(a.turn, Number.MAX_SAFE_INTEGER);
-                const bTurn = orderNumber(b.turn, Number.MAX_SAFE_INTEGER);
-                const turnDiff = aTurn - bTurn;
-                if (turnDiff !== 0) return turnDiff;
-
-                const aSequence = orderNumber(a.sequence, 0);
-                const bSequence = orderNumber(b.sequence, 0);
-                const sequenceDiff = aSequence - bSequence;
-                if (sequenceDiff !== 0) return sequenceDiff;
-
-                return (b.vectorScore || 0) - (a.vectorScore || 0);
-            });
-        };
-
-        const getVectorMemoryText = (memory) => {
-            return String(memory?.paragraph || memory?.summary || memory?.sourceText || '').trim();
-        };
-
-        const getVectorMemoryFingerprint = (memory) => {
-            const normalized = getVectorMemoryText(memory)
-                .replace(/\s+/g, '')
-                .replace(/[，。、“”‘’：；！？,.!?;:"'`~]/g, '');
-
-            if (normalized.length >= 80) {
-                return normalized.slice(0, 1000);
-            }
-
-            return `${memory?.turn || ''}:${memory?.sequence || ''}:${normalized}`;
         };
 
         const buildFullTurnMemoryText = (turnInfo) => {
@@ -10232,7 +9404,7 @@ image###生成的提示词###
             try {
                 if (!char.uuid) {
                     char.uuid = generateUUID();
-                    if (!db) await initDB();
+                    await initDB();
                     await setStoredValue('characters', characters.value);
                 }
                 sessionState = await loadChatSessionsStateForCharacter(char, index);
@@ -10435,124 +9607,6 @@ image###生成的提示词###
 
         // Import/Export Logic
 
-        const normalizeWorldInfoEntry = (entry) => {
-            // Create a merged object from root and extensions for robust parsing
-            // FIX: Extensions should override root properties as they usually contain more specific/updated settings
-            const mergedEntry = { ...entry };
-            const ext = entry.extensions || {};
-            Object.keys(ext).forEach(key => {
-                if (ext[key] !== undefined && ext[key] !== null) {
-                    mergedEntry[key] = ext[key];
-                }
-            });
-            delete mergedEntry.extensions; // Clean up
-
-            // Helper to safely convert values to boolean
-            const toBoolean = (value, defaultValue) => {
-                if (value === undefined || value === null) return defaultValue;
-                if (typeof value === 'string') {
-                    if (value.toLowerCase() === 'false') return false;
-                    if (value.toLowerCase() === 'true') return true;
-                }
-                return !!value;
-            };
-
-            // Helper to safely convert values to number
-            const toNumber = (value, defaultValue) => {
-                if (value === undefined || value === null || value === '') return defaultValue;
-                const num = Number(value);
-                return isNaN(num) ? defaultValue : num;
-            };
-
-            // Normalize keys (ST uses 'keys' array, but some exports might be comma string)
-            // Also handle 'key' (singular) which appears in some exports like the example json
-            let keys = mergedEntry.keys || mergedEntry.key || [];
-            if (typeof keys === 'string') {
-                keys = keys.split(/[,，]/).map(k => k.trim()).filter(Boolean);
-            } else if (!Array.isArray(keys)) {
-                keys = [];
-            }
-
-            // Map ST position to our internal values with improved logic
-            let position = 'at_depth'; // Default
-            const stPos = mergedEntry.position;
-            const validPositions = ['system_top', 'global_note', 'before_char', 'after_char', 'at_depth', 'user_top', 'assistant_top'];
-
-            const posNameMap = {
-                'before_character': 'before_char',
-                'after_character': 'after_char',
-                'character_top': 'before_char',
-                'character_bottom': 'after_char',
-                'before_examples': 'before_char',
-                'after_examples': 'after_char',
-                'example_top': 'before_char',
-                'example_bottom': 'after_char',
-                'an_top': 'global_note',
-                'author_note': 'global_note',
-                'an_bottom': 'global_note'
-            };
-
-            if (typeof stPos === 'string') {
-                let lowerPos = stPos.toLowerCase().replace(/ /g, '_');
-                // Handle standard mappings
-                if (posNameMap[lowerPos]) {
-                    lowerPos = posNameMap[lowerPos];
-                }
-
-                const foundPos = validPositions.find(p => p === lowerPos);
-                if (foundPos) {
-                    position = foundPos;
-                }
-            } else if (typeof stPos === 'number' || (typeof stPos === 'string' && !isNaN(Number(stPos)) && validPositions.indexOf(stPos) === -1)) {
-                const numPos = Number(stPos);
-                // External card standard position mapping
-                // 0: Before Char
-                // 1: After Char
-                // 2: AN Top
-                // 3: AN Bottom
-                // 4: At Depth
-                const posMap = {
-                    0: 'before_char',
-                    1: 'after_char',
-                    2: 'global_note',
-                    3: 'global_note',
-                    4: 'at_depth',
-                };
-                position = posMap[numPos] !== undefined ? posMap[numPos] : 'at_depth';
-            }
-
-            // Explicitly handle mapped fields to ensure extensions override correctly
-            // Extensions often use snake_case while we prefer camelCase or vice versa in some legacy
-            const getValue = (keys, defaultValue) => {
-                for (const key of keys) {
-                    if (mergedEntry[key] !== undefined && mergedEntry[key] !== null) {
-                        return mergedEntry[key];
-                    }
-                }
-                return defaultValue;
-            };
-            return {
-                // --- Basic Info ---
-                comment: getValue(['comment'], ''),
-                content: getValue(['content'], ''),
-                enabled: toBoolean(getValue(['enabled'], true), true) && !toBoolean(getValue(['disable', 'disabled'], false), false),
-                scope: systemWorldInfoNames.includes(getValue(['comment'], '')) || getValue(['scope'], 'character') === 'global' ? 'global' : 'character',
-
-                // --- Keys & Matching ---
-                keys: keys,
-                useRegex: toBoolean(getValue(['use_regex', 'useRegex'], false), false),
-                constant: toBoolean(getValue(['constant'], false), false),
-
-                // --- Position & Order ---
-                position: position,
-                order: toNumber(getValue(['insertion_order', 'order'], 0), 0),
-                depth: toNumber(getValue(['depth'], 4), 4),
-                scanDepth: toNumber(getValue(['scan_depth', 'scanDepth'], null), null),
-                probability: toNumber(getValue(['probability'], 100), 100),
-                useProbability: toBoolean(getValue(['useProbability', 'use_probability'], true), true),
-            };
-        };
-
         const toWorldInfoExportEntry = (entry) => {
             const normalized = normalizeWorldInfoEntry(entry);
             return cardUtils.toWorldInfoExportEntry(normalized);
@@ -10650,178 +9704,14 @@ image###生成的提示词###
 
             const processCharacterData = async (rawData, avatarUrl) => {
                 try {
-                    let charData = rawData;
-                    let characterBook = null;
-                    let regexScripts = null;
-                    let uiTemplates = null;
-
-                    // --- External Card Data Structure Parsing ---
-
-                    // Wrapped cards store the actual character fields in a 'data' object.
-                    if (rawData.data) {
-                        charData = rawData.data;
-                    }
-
-                    // --- Extract Core Character Fields ---
-                    // External cards may use specific field names. We map them to our internal structure.
-                    // Priority: V2 fields > V1 fields > Fallbacks
-
-                    const name = charData.name || charData.char_name || 'Unknown';
-                    const description = charData.description || charData.char_persona || '';
-                    const personality = charData.personality || '';
-                    // 保留标准角色卡字段，确保导入 JSON 后不会丢失原生提示和示例对话。
-                    const scenario = charData.scenario || '';
-                    const system_prompt = charData.system_prompt || '';
-                    const post_history_instructions = charData.post_history_instructions || '';
-                    const mes_example = charData.mes_example || '';
-                    const alternate_greetings = Array.isArray(charData.alternate_greetings) ? charData.alternate_greetings : [];
-                    const first_mes = charData.first_mes || '';
-                    const creator_notes = charData.creator_notes || charData.creatorcomment || charData.creator_comment || '';
-
-                    // --- Extract World Info (Character Book) ---
-                    // In V2, this is explicitly 'character_book'
-                    if (charData.character_book) {
-                        characterBook = charData.character_book;
-                    }
-                    // Fallback for V1 or loose JSONs
-                    else if (rawData.character_book) {
-                        characterBook = rawData.character_book;
-                    }
-
-                    // --- Extract Regex Scripts ---
-                    // In V2-compatible cards, regex scripts are often in 'extensions.regex_scripts'
-                    if (charData.extensions && charData.extensions.regex_scripts) {
-                        regexScripts = charData.extensions.regex_scripts;
-                    }
-                    // Check root extensions as fallback
-                    else if (rawData.extensions && rawData.extensions.regex_scripts) {
-                        regexScripts = rawData.extensions.regex_scripts;
-                    }
-                    // Direct legacy keys
-                    else if (charData.regex_scripts || rawData.regex_scripts) {
-                        regexScripts = charData.regex_scripts || rawData.regex_scripts;
-                    }
-
-                    uiTemplates = charData.uiTemplates
-                        || charData.ui_templates
-                        || rawData.uiTemplates
-                        || rawData.ui_templates
-                        || charData.extensions?.ui_templates
-                        || charData.extensions?.rp_hub_ui_templates
-                        || rawData.extensions?.ui_templates
-                        || rawData.extensions?.rp_hub_ui_templates
-                        || null;
-
-                    const char = {
-                        name,
-                        description,
-                        first_mes,
-                        avatar: avatarUrl || defaultAvatar,
-                        personality,
-                        scenario,
-                        system_prompt,
-                        post_history_instructions,
-                        mes_example,
-                        alternate_greetings,
-                        creator_notes,
-                        worldInfo: [],
-                        regexScripts: [],
-                        uiTemplates: Array.isArray(uiTemplates) ? uiTemplates.map(t => normalizeUiTemplate({ ...sanitizeUiTemplateImportEntry(t), id: generateUUID(), scope: 'character' })) : [],
-                        recentGenerationTimes: [],
-                        uuid: generateUUID(),
-                        createdAt: Date.now()
-                    };
-
-                    // --- Process World Info Entries ---
-                    let entries = [];
-                    if (characterBook) {
-                        if (Array.isArray(characterBook.entries)) {
-                            entries = characterBook.entries;
-                        } else if (typeof characterBook.entries === 'object' && characterBook.entries !== null) {
-                            // Handle object-based entries from some exports (like the user's file)
-                            entries = Object.values(characterBook.entries);
-                        } else if (Array.isArray(characterBook)) {
-                            // Legacy array format
-                            entries = characterBook;
-                        }
-                    }
-
-                    if (entries.length > 0) {
-                        char.worldInfo = entries
-                            .map(entry => normalizeWorldInfoEntry({ ...entry, scope: 'character' }))
-                            .filter(entry => entry.scope !== 'global');
-                        console.log(`Imported and normalized ${char.worldInfo.length} World Info entries.`);
-                    }
-
-                    // --- Process Regex Scripts ---
-                    if (Array.isArray(regexScripts)) {
-                        char.regexScripts = regexScripts.map(script => {
-                            // Preserve ALL original external fields completely
-                            const normalized = {
-                                ...script, // Keep all original fields intact
-                            };
-
-                            // Add normalized fields ONLY if they don't exist
-                            // Common external fields: scriptName, findRegex, replaceString, trimStrings,
-                            // disabled, markdownOnly, promptOnly, runOnEdit, substituteRegex
-                            if (!normalized.name && script.scriptName) {
-                                normalized.name = script.scriptName;
-                            }
-                            if (!normalized.name) {
-                                normalized.name = 'Regex Script';
-                            }
-
-                            // Keep both findRegex (external standard) and regex (legacy)
-                            if (!normalized.regex && script.findRegex) {
-                                normalized.regex = script.findRegex;
-                            }
-                            if (!normalized.regex) {
-                                normalized.regex = '';
-                            }
-
-                            // Parse /pattern/flags format if present
-                            if (normalized.regex.startsWith('/') && normalized.regex.lastIndexOf('/') > 0) {
-                                const lastSlash = normalized.regex.lastIndexOf('/');
-                                const potentialFlags = normalized.regex.substring(lastSlash + 1);
-                                // Simple flags validation
-                                if (/^[gimsuy]*$/.test(potentialFlags)) {
-                                    normalized.flags = potentialFlags;
-                                    normalized.regex = normalized.regex.substring(1, lastSlash);
-                                }
-                            }
-
-                            // Keep both replaceString (external standard) and replacement (legacy)
-                            if (!normalized.replacement && script.replaceString) {
-                                normalized.replacement = script.replaceString;
-                            }
-
-                            // Preserve flags (if not already set by parsing)
-                            if (!normalized.flags && script.regexFlags) {
-                                normalized.flags = script.regexFlags;
-                            }
-                            if (!normalized.flags) {
-                                normalized.flags = 'g';
-                            }
-
-                            // CRITICAL: Convert ST's 'disabled' field to 'enabled'
-                            // ST uses: disabled=true (禁用), disabled=false/undefined (启用)
-                            // We use: enabled=true (启用), enabled=false (禁用)
-                            if (!normalized.hasOwnProperty('enabled')) {
-                                // If script has 'disabled' field, use it; otherwise default to enabled
-                                normalized.enabled = script.hasOwnProperty('disabled') ? !script.disabled : true;
-                            }
-
-                            // New Fields
-                            if (!normalized.placement) normalized.placement = script.placement || [1, 2];
-                            if (normalized.markdownOnly === undefined) normalized.markdownOnly = script.markdownOnly || false;
-                            if (normalized.promptOnly === undefined) normalized.promptOnly = script.promptOnly || false;
-                            if (normalized.runOnEdit === undefined) normalized.runOnEdit = script.runOnEdit || false;
-                            if (normalized.minDepth === undefined) normalized.minDepth = script.minDepth || null;
-                            if (normalized.maxDepth === undefined) normalized.maxDepth = script.maxDepth || null;
-
-                            return normalizeRegexScript({ ...normalized, scope: 'character' }, 'character');
-                        }).filter(script => script.scope !== 'global');
-                    }
+                    // 角色卡字段兼容和标准化由独立 parser 完成，事件层只负责加入列表和切换。
+                    const char = parseCharacterCard(rawData, avatarUrl, {
+                        defaultAvatar,
+                        generateUUID,
+                        normalizeRegexScript,
+                        normalizeUiTemplate,
+                        sanitizeUiTemplateImportEntry
+                    });
 
                     characters.value.push(char);
 

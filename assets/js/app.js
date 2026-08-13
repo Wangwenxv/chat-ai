@@ -120,8 +120,11 @@ createApp({
         const DEFAULT_CHAT_AI_ROBOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect width="160" height="160" rx="36" fill="#2f3136"/><circle cx="80" cy="54" r="18" fill="#60a5fa" opacity=".95"/><path d="M80 72v12" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/><rect x="32" y="78" width="96" height="58" rx="24" fill="#f8fafc"/><rect x="47" y="93" width="66" height="28" rx="14" fill="#111827"/><circle cx="65" cy="107" r="6" fill="#60a5fa"/><circle cx="95" cy="107" r="6" fill="#60a5fa"/><path d="M64 128h32" stroke="#94a3b8" stroke-width="6" stroke-linecap="round"/><path d="M32 104H20M140 104h-12" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/></svg>`;
         const DEFAULT_CHAT_AI_AVATAR = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DEFAULT_CHAT_AI_ROBOT_SVG)}`;
         const CHAT_AI_CHARACTER_CARD_URL = 'assets/defalut/Chat-ai.json';
-        const DEFAULT_CHAT_AI_CHARACTER_UUID = 'chat-ai-default';
         const SIMPLE_CHAT_AI_MODE = true;
+        // 用人格来源生成稳定 ID，让不同 JSON 的人格和聊天上下文完全隔离。
+        const DEFAULT_CHAT_AI_CHARACTER_UUID = CHAT_AI_CHARACTER_CARD_URL === 'assets/defalut/Chat-ai.json'
+            ? 'chat-ai-default'
+            : `chat-ai-default:${CHAT_AI_CHARACTER_CARD_URL}`;
         const readChatAiCharacterCardSync = (url) => {
             if (typeof XMLHttpRequest === 'undefined') return null;
             try {
@@ -142,7 +145,6 @@ createApp({
             const cardData = simpleChatAiCharacterCard?.data || simpleChatAiCharacterCard || {};
             return cardData && typeof cardData === 'object' && !Array.isArray(cardData) ? cardData : {};
         };
-        const SIMPLE_CHAT_AI_SYSTEM_PROMPT = getSimpleChatAiCardData().personality || 'You are Chat-ai.';
         const DEFAULT_USER_NAME_PLACEHOLDER = '请前往设置自定义你的名称';
 
         // Default Avatar
@@ -265,7 +267,6 @@ createApp({
 
         const currentView = ref('chat');
         const showAdvancedFeatures = ref(!SIMPLE_CHAT_AI_MODE);
-        const chatAiSystemPrompt = ref(SIMPLE_CHAT_AI_SYSTEM_PROMPT);
         let isMobileSidebarOpen = false;
         const isSidebarCollapsed = ref(false);
         const isAdvancedNavOpen = ref(false);
@@ -552,8 +553,26 @@ createApp({
             `Name: ${user.name || ''}`,
             `Description: ${user.description || ''}`
         ].join('\n');
-        const getCurrentCharacterPrompt = () =>
-            `Name: ${currentCharacter.value.name}\nPersonality: ${currentCharacter.value.personality}`;
+        // 角色卡标准宏在发送前展开，避免角色设定中出现未替换的 {{char}} 或 {{user}}。
+        const replaceCharacterCardMacros = (text, character = currentCharacter.value) => String(text || '')
+            .replace(/\{\{char\}\}/gi, character?.name || '')
+            .replace(/\{\{user\}\}/gi, user.name || 'User');
+
+        // 角色卡模式下，系统提示词只从当前角色卡字段生成，避免固定身份覆盖已选择角色。
+        const getCurrentCharacterPrompt = () => {
+            const character = currentCharacter.value;
+            if (!character) return '';
+
+            return [
+                character.system_prompt,
+                character.name ? `Name: ${character.name}` : '',
+                character.description ? `Description:\n${character.description}` : '',
+                character.personality ? `Personality:\n${character.personality}` : '',
+                character.scenario ? `Scenario:\n${character.scenario}` : ''
+            ].map(value => replaceCharacterCardMacros(value, character))
+                .filter(value => String(value || '').trim())
+                .join('\n\n');
+        };
 
         const loadChatAiCharacterCard = async () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
@@ -563,8 +582,6 @@ createApp({
                 const content = await response.json();
                 if (!content || typeof content !== 'object') return;
                 simpleChatAiCharacterCard = content;
-                const cardData = getSimpleChatAiCardData();
-                if (cardData.personality) chatAiSystemPrompt.value = cardData.personality;
                 const builtinCharacter = characters.value.find(char => char?.uuid === DEFAULT_CHAT_AI_CHARACTER_UUID);
                 if (builtinCharacter) Object.assign(builtinCharacter, createDefaultChatAiCharacter());
             } catch (error) {
@@ -858,8 +875,8 @@ createApp({
                 || extensions.ui_templates
                 || extensions.rp_hub_ui_templates
                 || [];
-            const personality = cardData.personality || chatAiSystemPrompt.value || SIMPLE_CHAT_AI_SYSTEM_PROMPT;
-            chatAiSystemPrompt.value = personality;
+            // 默认卡也完整保留标准角色字段，后续由当前角色卡统一组装提示词。
+            const personality = cardData.personality || '';
 
             return {
                 name: cardData.name || cardData.char_name || APP_NAME,
@@ -867,35 +884,34 @@ createApp({
                 first_mes: cardData.first_mes || '',
                 avatar: DEFAULT_CHAT_AI_AVATAR,
                 personality,
+                scenario: cardData.scenario || '',
+                system_prompt: cardData.system_prompt || '',
+                post_history_instructions: cardData.post_history_instructions || '',
                 creator_notes: cardData.creator_notes || cardData.creatorcomment || cardData.creator_comment || '',
-                mes_example: '',
+                mes_example: cardData.mes_example || '',
+                alternate_greetings: Array.isArray(cardData.alternate_greetings) ? cardData.alternate_greetings : [],
                 worldInfo: worldInfoEntries.map(entry => normalizeWorldInfoEntry({ ...entry, scope: 'character' })).filter(entry => entry.scope !== 'global'),
                 regexScripts: Array.isArray(regexScripts) ? regexScripts.map(script => normalizeRegexScript({ ...script, scope: 'character' }, 'character')).filter(script => script.scope !== 'global') : [],
                 uiTemplates: Array.isArray(uiTemplates) ? uiTemplates.map(template => normalizeUiTemplate({ ...sanitizeUiTemplateImportEntry(template), id: generateUUID(), scope: 'character' })) : [],
                 recentGenerationTimes: [],
                 uuid: DEFAULT_CHAT_AI_CHARACTER_UUID,
                 createdAt: 0,
-                isBuiltinChatAi: true
+                isBuiltinChatAi: true,
+                defaultCardSource: CHAT_AI_CHARACTER_CARD_URL
             };
         };
 
         const ensureSimpleChatAiCharacter = () => {
             if (!SIMPLE_CHAT_AI_MODE) return;
             const defaultCharacter = createDefaultChatAiCharacter();
-            const existingIndex = characters.value.findIndex(char =>
-                char?.uuid === DEFAULT_CHAT_AI_CHARACTER_UUID || char?.isBuiltinChatAi === true
-            );
-            if (existingIndex >= 0) {
-                const existing = characters.value[existingIndex] || {};
-                characters.value.splice(existingIndex, 1);
-                characters.value.unshift({
-                    ...existing,
-                    ...defaultCharacter,
-                    createdAt: Number(existing.createdAt) || defaultCharacter.createdAt
-                });
-            } else {
-                characters.value.unshift(defaultCharacter);
-            }
+            const existing = characters.value.find(char => char?.uuid === DEFAULT_CHAT_AI_CHARACTER_UUID) || {};
+
+            // 单人格模式只暴露当前 JSON 对应的内置角色，旧角色元数据保留在原聊天存储中但不再参与恢复。
+            characters.value = [{
+                ...existing,
+                ...defaultCharacter,
+                createdAt: Number(existing.createdAt) || defaultCharacter.createdAt
+            }];
             lastActiveCharacterId.value = 0;
         };
 
@@ -2504,10 +2520,6 @@ createApp({
                         if (!char.createdAt) {
                             // Use a slightly offset timestamp based on index to preserve some order for old cards
                             char.createdAt = Date.now() - (savedChars.length - index) * 1000;
-                            migrated = true;
-                        }
-                        if (Object.prototype.hasOwnProperty.call(char, 'scenario')) {
-                            delete char.scenario;
                             migrated = true;
                         }
                         if (Array.isArray(char.worldInfo)) {
@@ -4787,7 +4799,7 @@ ${content}
                     chatHistory.value.push({
                         role: 'assistant',
                         name: currentCharacter.value.name,
-                        content: currentCharacter.value.first_mes
+                        content: replaceCharacterCardMacros(currentCharacter.value.first_mes, currentCharacter.value)
                     });
                 }
                 memories.value = [];
@@ -5595,8 +5607,12 @@ ${content}
                 return { triggered: true, score: primaryMatches, matchedKeys };
             };
 
+            // 精简模式关闭预设管理，但角色卡自带的 character_book 仍按原生规则参与触发。
             let triggeredEntries = new Map(); // Use Map to store entries and their scores
-            const activeWorldInfo = SIMPLE_CHAT_AI_MODE ? [] : worldInfo.value.filter(e => e.enabled !== false);
+            const activeWorldInfoSource = SIMPLE_CHAT_AI_MODE
+                ? (currentCharacter.value?.worldInfo || [])
+                : worldInfo.value;
+            const activeWorldInfo = activeWorldInfoSource.filter(e => e.enabled !== false);
             const postprocessedChatHistory = getPostprocessedChatMessages(chatHistory.value, { includeSystem: false });
 
             // 1. Initial Scan (Chat History)
@@ -5682,13 +5698,16 @@ ${content}
                 .join('\n\n');
             const otherPresets = systemPresets.filter(p => p.name !== '破限');
 
-            const charPrompt = SIMPLE_CHAT_AI_MODE ? '' : getCurrentCharacterPrompt();
-            const mesExample = SIMPLE_CHAT_AI_MODE ? '' : currentCharacter.value.mes_example;
+            // 无论是否为精简界面，都使用当前选中的角色卡生成角色上下文。
+            const charPrompt = getCurrentCharacterPrompt();
+            const mesExample = replaceCharacterCardMacros(currentCharacter.value?.mes_example || '');
 
             let userPrompt = SIMPLE_CHAT_AI_MODE ? '' : buildUserInfoPrompt();
 
             // Helper to join content with comments
-            const joinContent = (entries) => entries.map(e => `[${e.comment || 'Entry'}]\n${e.content}`).join('\n\n');
+            const joinContent = (entries) => entries
+                .map(e => `[${e.comment || 'Entry'}]\n${replaceCharacterCardMacros(e.content)}`)
+                .join('\n\n');
             const getWorldInfoDisplayName = (entry) => entry.comment || entry.name || '未命名条目';
 
             // Build System Prompt
@@ -5696,7 +5715,12 @@ ${content}
             let characterPreludePrompt = '';
 
             if (SIMPLE_CHAT_AI_MODE) {
-                systemPromptParts.push(chatAiSystemPrompt.value || SIMPLE_CHAT_AI_SYSTEM_PROMPT);
+                // 精简模式只关闭预设和高级界面，角色卡本身仍作为原生系统提示词生效。
+                if (wiGroups.system_top.length > 0) systemPromptParts.push(joinContent(wiGroups.system_top));
+                if (wiGroups.global_note.length > 0) systemPromptParts.push(joinContent(wiGroups.global_note));
+                if (wiGroups.before_char.length > 0) systemPromptParts.push(joinContent(wiGroups.before_char));
+                if (charPrompt) systemPromptParts.push(charPrompt);
+                if (wiGroups.after_char.length > 0) systemPromptParts.push(joinContent(wiGroups.after_char));
             } else {
                 // 1. Presets (只有设定环境的破限预设保留在 system 中)
                 if (systemPresetPrompt) systemPromptParts.push(systemPresetPrompt);
@@ -5739,13 +5763,18 @@ ${content}
                 if (uiTemplateContextPrompt) systemPromptParts.push(uiTemplateContextPrompt);
             }
 
+            if (SIMPLE_CHAT_AI_MODE && mesExample.trim()) {
+                characterPreludePrompt = `[Character Examples]\n${mesExample}`;
+            }
+
+            // 历史后指令在所有历史和角色书注入完成后追加，保持角色卡字段的原生语义。
+            const postHistoryInstructions = replaceCharacterCardMacros(currentCharacter.value?.post_history_instructions || '');
+
             const systemPrompt = systemPromptParts.join('\n\n');
-            const systemWorldInfo = SIMPLE_CHAT_AI_MODE
-                ? []
-                : [
-                    ...wiGroups.system_top,
-                    ...wiGroups.global_note
-                ];
+            const systemWorldInfo = [
+                ...wiGroups.system_top,
+                ...wiGroups.global_note
+            ];
 
             // Base Messages
             let messages = [
@@ -6060,8 +6089,9 @@ ${content}
                 return finalMessages;
             };
 
+            // 角色书的所有插入位置在精简模式下仍然有效，但预设和高级工具注入继续关闭。
+            messages = processMessageInjections(messages);
             if (!SIMPLE_CHAT_AI_MODE) {
-                messages = processMessageInjections(messages);
                 messages = appendActiveToolReminderToLatestUserMessage(messages);
                 const activeToolContextPayload = pendingActiveToolContext.value || (activeToolDepth > 0 ? buildActiveToolResultPayload() : '');
                 if (activeToolContextPayload) {
@@ -6073,6 +6103,12 @@ ${content}
                 }
             } else {
                 pendingActiveToolContext.value = '';
+            }
+            if (postHistoryInstructions.trim()) {
+                messages.push({
+                    role: 'system',
+                    content: postHistoryInstructions
+                });
             }
             messages = postprocessContextMessages(messages).map((message, index, array) => ({
                 ...message,
@@ -6701,10 +6737,8 @@ ${content}
         };
 
         const getTextOnlyImageContext = (currentMessage) => {
-            const systemParts = [chatAiSystemPrompt.value || SIMPLE_CHAT_AI_SYSTEM_PROMPT];
-            if (!SIMPLE_CHAT_AI_MODE && currentCharacter.value) {
-                systemParts.push(getCurrentCharacterPrompt());
-            }
+            // 图片理解上下文同样使用当前角色卡，避免回退到固定 chat-ai 身份。
+            const systemParts = [getCurrentCharacterPrompt()];
             const historyLines = chatHistory.value
                 .filter(message => message && message !== currentMessage && ['user', 'assistant'].includes(message.role))
                 .map(message => {
@@ -9584,7 +9618,6 @@ ${content}
                 regexScripts: characterRegexScripts,
                 uiTemplates: (editingCharacter.data.uiTemplates || []).map(template => normalizeUiTemplate({ ...template, scope: 'character' }))
             };
-            delete normalizedCharacterData.scenario;
             if (editingCharacter.id !== undefined) {
                 characters.value[editingCharacter.id] = normalizedCharacterData;
             } else {
@@ -9993,7 +10026,7 @@ image###生成的提示词###
         const createInitialChatHistory = (char) => char?.first_mes ? [{
             role: 'assistant',
             name: char.name,
-            content: char.first_mes
+            content: replaceCharacterCardMacros(char.first_mes, char)
         }] : [];
 
         const normalizeStoredChatMessages = (savedChat, char) => {
@@ -10058,7 +10091,9 @@ image###生成的提示词###
             let shouldSaveState = false;
 
             if (state.sessions.length === 0) {
-                const legacy = await loadLegacyChatHistoryForCharacter(char, fallbackIndex);
+                // URL 指定的内置人格拥有独立会话，禁止把旧索引 0 的 chat-ai 历史迁移到新人格。
+                const legacyFallbackIndex = char?.isBuiltinChatAi ? null : fallbackIndex;
+                const legacy = await loadLegacyChatHistoryForCharacter(char, legacyFallbackIndex);
                 const session = buildChatSessionMeta({
                     id: generateUUID(),
                     createdAt: char.createdAt || Date.now(),
@@ -10627,28 +10662,6 @@ image###生成的提示词###
                         charData = rawData.data;
                     }
 
-                    const discardRemovedCardFields = (target) => {
-                        if (!target || typeof target !== 'object') return;
-                        [
-                            'mes_example',
-                            'system_prompt',
-                            'post_history_instructions',
-                            'alternate_greetings',
-                            'tags',
-                            'creator',
-                            'character_version',
-                            'spec',
-                            'spec_version'
-                        ].forEach(field => delete target[field]);
-                        if (target.extensions && typeof target.extensions === 'object') {
-                            delete target.extensions.world;
-                            delete target.extensions.depth_prompt;
-                        }
-                    };
-                    discardRemovedCardFields(rawData);
-                    discardRemovedCardFields(rawData.data);
-                    discardRemovedCardFields(charData);
-
                     // --- Extract Core Character Fields ---
                     // External cards may use specific field names. We map them to our internal structure.
                     // Priority: V2 fields > V1 fields > Fallbacks
@@ -10656,6 +10669,12 @@ image###生成的提示词###
                     const name = charData.name || charData.char_name || 'Unknown';
                     const description = charData.description || charData.char_persona || '';
                     const personality = charData.personality || '';
+                    // 保留标准角色卡字段，确保导入 JSON 后不会丢失原生提示和示例对话。
+                    const scenario = charData.scenario || '';
+                    const system_prompt = charData.system_prompt || '';
+                    const post_history_instructions = charData.post_history_instructions || '';
+                    const mes_example = charData.mes_example || '';
+                    const alternate_greetings = Array.isArray(charData.alternate_greetings) ? charData.alternate_greetings : [];
                     const first_mes = charData.first_mes || '';
                     const creator_notes = charData.creator_notes || charData.creatorcomment || charData.creator_comment || '';
 
@@ -10699,6 +10718,11 @@ image###生成的提示词###
                         first_mes,
                         avatar: avatarUrl || defaultAvatar,
                         personality,
+                        scenario,
+                        system_prompt,
+                        post_history_instructions,
+                        mes_example,
+                        alternate_greetings,
                         creator_notes,
                         worldInfo: [],
                         regexScripts: [],

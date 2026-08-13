@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "node build-app.js && node build-pages.js --build",
+    "test": "node --test ../tests/*.test.js"
+  }
+}

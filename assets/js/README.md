@@ -22,7 +22,27 @@ assets/js/
     storage.js               IndexedDB、旧库迁移和作用域 key
   memory/
     vector-utils.js          文本分段、向量计算、指纹和词法评分
-  app.js                     Vue 状态、业务流程和模块装配
+  app.js                     由构建脚本生成的轻量加载器，不直接编辑
+```
+
+## 页面和运行时源码
+
+```text
+src/
+  app/                       按依赖顺序编号的领域源码片段
+  pages/
+    fragments/               公共壳、十二个页面主体和业务弹窗源码
+pages/                       十二个独立 HTML 入口构建产物
+scripts/
+  build-app.js               将 src/app 片段清单写入 assets/js/app.js 加载器
+  build-pages.js             将页面片段组装为 index.html 和 pages/*.html
+```
+
+修改业务流程时编辑 `src/app/*.part.js`，修改页面时编辑 `src/pages/fragments/*.html`，然后运行：
+
+```powershell
+node scripts/build-app.js
+node scripts/build-pages.js
 ```
 
 已有 `card-utils.js` 继续负责 PNG 角色卡和导出格式，`ui-select.js` 继续负责现有下拉组件，`utils.js` 只保留 UUID 和思维链解析等通用函数。

@@ -1,0 +1,77 @@
+<!-- Preset Editor Modal -->
+        <div v-if="showPresetEditor"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 md:p-3 animate-fade-in">
+            <div
+                class="bg-white rounded-2xl border border-gray-200 w-full max-w-2xl flex flex-col shadow-2xl max-h-[94vh] overflow-hidden">
+                <!-- Header -->
+                <div
+                    class="editor-modal-header">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-primary-50 text-primary-600 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 leading-tight">{{ editingPreset.id !== undefined
+                                ? '编辑预设' : '新建预设' }}</h3>
+                            <p class="text-xs text-gray-500">{{ getPresetRoleLabel(editingPreset.data) }}</p>
+                        </div>
+                    </div>
+                    <button @click="showPresetEditor = false"
+                        class="modal-close-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Body -->
+                <div class="flex-1 p-6 space-y-6 bg-gray-50/30 overflow-y-auto custom-scrollbar">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">预设名称</label>
+                        <input v-model="editingPreset.data.name" type="text"
+                            class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-all shadow-sm font-medium"
+                            placeholder="例如：沉浸式叙事">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">注入位置</label>
+                        <custom-select v-model="editingPreset.data.role" :options="presetRoleOptions"
+                            button-class="font-medium">
+                        </custom-select>
+                    </div>
+                    <div>
+                        <label
+                            class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
+                            <span>{{ getPresetRoleLabel(editingPreset.data) }}内容</span>
+                            <span
+                                class="text-[10px] font-normal normal-case bg-gray-100 px-1.5 rounded text-gray-500">{{
+                                (editingPreset.data.content || '').length }} 字符</span>
+                        </label>
+                        <textarea v-model="editingPreset.data.content" rows="12"
+                            class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none text-sm shadow-inner leading-relaxed resize-y min-h-[200px]"
+                            placeholder="在此输入预设内容..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div
+                    class="p-4 md:p-5 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50/80 backdrop-blur-sm flex-shrink-0">
+                    <button @click="showPresetEditor = false"
+                            class="modal-secondary-button">取消</button>
+                    <button @click="savePreset"
+                        class="modal-primary-button">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        保存预设
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

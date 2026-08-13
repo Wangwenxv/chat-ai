@@ -39,14 +39,19 @@ chat-ai 致力于提供流畅、私密、轻量的本地化 AI 对话体验。
 
 ```text
 chat-ai/
-├── index.html            # 主程序
+├── index.html            # 默认聊天入口（构建产物）
+├── pages/                # 侧边栏页面的十二个独立 HTML 入口
+├── src/
+│   ├── app/              # 按状态、聊天、记忆、角色等领域拆分的运行时源码
+│   └── pages/            # 页面源模板和可复用片段
+├── scripts/              # 页面与运行时构建脚本
 ├── character/            # 辅助页面
 │   └── index.html
 ├── assets/
 │   ├── css/
 │   │   └── styles.css    # 核心样式文件
 │   └── js/
-│       ├── app.js        # 核心业务逻辑
+│       ├── app.js        # 轻量加载器，顺序读取 src/app 的业务片段
 │       ├── card-utils.js # 角色卡导入导出相关工具
 │       ├── ui-select.js  # 自定义选择器组件
 │       └── utils.js      # 工具函数库

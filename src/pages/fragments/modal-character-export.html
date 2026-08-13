@@ -1,0 +1,75 @@
+<!-- Character Export Selection Modal -->
+        <div v-if="showCharacterExportModal"
+            class="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div class="fixed inset-0" @click="showCharacterExportModal = false"></div>
+            <div class="compact-modal-panel">
+                <div class="p-6">
+                    <h3 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-primary-600" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                        导出选项
+                    </h3>
+
+                    <div class="grid grid-cols-1 gap-3">
+                        <button @click="confirmCharacterExport('json')"
+                            class="choice-card">
+                            <div
+                                class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <div class="font-bold text-base mb-0.5">导出为 JSON 文件</div>
+                                <div class="text-[11px] text-gray-500">导出角色卡数据 .json</div>
+                            </div>
+                        </button>
+
+                        <button @click="confirmCharacterExport('png')"
+                            class="choice-card">
+                            <div
+                                class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <div class="font-bold text-base mb-0.5">导出为 PNG 文件</div>
+                                <div class="text-[11px] text-gray-500">导出带头像图片的角色卡 .png</div>
+                            </div>
+                        </button>
+
+                        <button @click="confirmCharacterExport('chat')"
+                            class="choice-card">
+                            <div
+                                class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <div class="font-bold text-base mb-0.5">导出聊天记录</div>
+                                <div class="text-[11px] text-gray-500">单独导出当前角色的聊天记录 .jsonl</div>
+                            </div>
+                        </button>
+                    </div>
+
+                    <button @click="showCharacterExportModal = false"
+                        class="mt-6 w-full py-3 text-red-500 font-medium hover:text-red-600 transition-colors">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

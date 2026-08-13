@@ -1,0 +1,200 @@
+<!-- Add Character Selection Modal -->
+        <div v-if="showAddCharacterMenu"
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div class="fixed inset-0" @click="showAddCharacterMenu = false"></div>
+            <div class="compact-modal-panel">
+                <div class="p-6">
+                    <h3 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-primary-600" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                            </path>
+                        </svg>
+                        添加角色卡
+                    </h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <button @click="createNewCharacter(); showAddCharacterMenu = false"
+                            class="choice-card group">
+                            <div class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 4v16m8-8H4"></path>
+                                </svg>
+                            </div>
+                            <div class="text-left">
+                                <div class="font-bold">新建角色卡</div>
+                                <div class="text-xs text-gray-500">从零开始创建一个新角色</div>
+                            </div>
+                        </button>
+
+                        <label class="choice-card group">
+                            <div class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                            </div>
+                            <div class="text-left flex-1">
+                                <div class="font-bold">导入角色卡</div>
+                                <div class="text-xs text-gray-500">导入 .png 或 .json 文件</div>
+                            </div>
+                            <input type="file" accept=".png,.json"
+                                @change="importCharacter($event); showAddCharacterMenu = false" class="hidden">
+                        </label>
+
+                        <label class="choice-card group">
+                            <div class="choice-card__icon">
+                                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div class="text-left flex-1">
+                                <div class="font-bold">导入聊天记录</div>
+                                <div class="text-xs text-gray-500">导入 .jsonl 格式的聊天数据</div>
+                            </div>
+                            <input type="file" accept=".jsonl"
+                                @change="importCharacter($event); showAddCharacterMenu = false" class="hidden">
+                        </label>
+                    </div>
+
+                    <button @click="showAddCharacterMenu = false"
+                        class="mt-6 w-full py-3 text-red-500 font-medium hover:text-red-600 transition-colors">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Character Editor Modal -->
+        <div v-if="showCharacterEditor"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
+            <div
+                class="bg-white md:rounded-2xl border-0 md:border border-gray-200 w-full max-w-2xl h-full md:h-[750px] flex flex-col shadow-2xl overflow-hidden">
+                <div class="p-3 md:p-5 border-b border-gray-100 flex flex-col gap-4 bg-gray-50/80 backdrop-blur-sm flex-shrink-0">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-primary-600" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                                </path>
+                            </svg>
+                            {{ editingCharacter.id !== undefined ? '编辑角色' : '新建角色' }}
+                        </h3>
+                        <button @click="closeCharacterEditor"
+                            class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded-full transition-all">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <!-- Tab Switcher -->
+                    <div class="flex p-1 bg-gray-200/50 rounded-xl overflow-x-auto no-scrollbar gap-1">
+                        <button @click="editorTab = 'basic'"
+                            :class="['flex-1 px-4 py-2 text-sm font-bold transition-all rounded-lg whitespace-nowrap', editorTab === 'basic' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50']">
+                            基础
+                        </button>
+                        <button @click="editorTab = 'description'"
+                            :class="['flex-1 px-4 py-2 text-sm font-bold transition-all rounded-lg whitespace-nowrap', editorTab === 'description' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50']">
+                            描述
+                        </button>
+                        <button @click="editorTab = 'personality'"
+                            :class="['flex-1 px-4 py-2 text-sm font-bold transition-all rounded-lg whitespace-nowrap', editorTab === 'personality' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50']">
+                            人设
+                        </button>
+                        <button @click="editorTab = 'first_mes'"
+                            :class="['flex-1 px-4 py-2 text-sm font-bold transition-all rounded-lg whitespace-nowrap', editorTab === 'first_mes' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50']">
+                            开场白
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-3 md:p-8 custom-scrollbar flex flex-col bg-gray-50/30">
+                    <!-- Basic (Name & Avatar) -->
+                    <div v-if="editorTab === 'basic'"
+                        class="animate-fade-in flex-1 flex flex-col gap-4 md:gap-6 items-center justify-center min-h-0">
+                        <div class="flex flex-col items-center flex-shrink min-h-0">
+                            <div
+                                class="w-auto h-[40vh] md:h-[45vh] aspect-[2/3] bg-gray-100 rounded-2xl border border-gray-200 overflow-hidden relative group shadow-xl ring-4 ring-white">
+                                <img :src="editingCharacter?.data?.avatar" class="w-full h-full object-cover">
+                                <label
+                                    class="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer backdrop-blur-[2px]">
+                                    <svg class="w-8 h-8 text-white mb-2" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+                                        </path>
+                                    </svg>
+                                    <span class="text-white font-bold text-sm">更换图片</span>
+                                    <input type="file" accept="image/*" @change="handleAvatarUpload" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+                        <div class="w-full max-w-md space-y-2 flex-shrink-0">
+                            <div class="text-center">
+                                <label
+                                    class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">角色名称</label>
+                                <input v-model="editingCharacter.data.name" type="text"
+                                    class="w-full bg-gray-50/60 border border-gray-300 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none text-lg font-bold shadow-inner transition-all text-center"
+                                    placeholder="输入角色名称...">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Description -->
+                    <div v-if="editorTab === 'description'" class="animate-fade-in h-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-sm font-bold text-gray-600">简短描述</label>
+                            <span class="text-[10px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{{
+                                (editingCharacter.data.description || '').length }} 字</span>
+                        </div>
+                        <textarea v-model="editingCharacter.data.description"
+                            class="w-full bg-gray-50/60 border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none flex-1 resize-none shadow-inner transition-all leading-relaxed"
+                            placeholder="对角色的简短介绍..."></textarea>
+                    </div>
+
+                    <!-- Personality -->
+                    <div v-if="editorTab === 'personality'" class="animate-fade-in h-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-sm font-bold text-gray-600">具体人设</label>
+                            <span class="text-[10px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{{
+                                (editingCharacter.data.personality || '').length }} 字</span>
+                        </div>
+                        <textarea v-model="editingCharacter.data.personality"
+                            class="w-full bg-gray-50/60 border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none flex-1 resize-none shadow-inner transition-all leading-relaxed"
+                            placeholder="详细的角色性格、外貌、喜好等设定..."></textarea>
+                    </div>
+
+                    <!-- First Message -->
+                    <div v-if="editorTab === 'first_mes'" class="animate-fade-in h-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-sm font-bold text-gray-600">开场白</label>
+                            <span class="text-[10px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{{
+                                (editingCharacter.data.first_mes || '').length }} 字</span>
+                        </div>
+                        <textarea v-model="editingCharacter.data.first_mes"
+                            class="w-full bg-gray-50/60 border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none flex-1 resize-none shadow-inner transition-all leading-relaxed"
+                            placeholder="角色在对话开始时说的第一句话..."></textarea>
+                    </div>
+                </div>
+                <div class="p-3 md:p-5 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50/80 backdrop-blur-sm flex-shrink-0">
+                    <button @click="closeCharacterEditor"
+                        class="px-6 py-2.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl transition-all font-bold text-sm shadow-sm active:scale-95">取消</button>
+                    <button @click="saveCharacter"
+                        class="px-8 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl transition-all font-bold text-sm shadow-md hover:shadow-lg active:scale-95 flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        保存角色
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

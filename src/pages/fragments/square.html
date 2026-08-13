@@ -1,0 +1,8 @@
+<!-- Square View -->
+            <div v-if="showAdvancedFeatures && currentView === 'square'" class="h-full overflow-hidden flex flex-col bg-gray-50 relative">
+                <embedded-view-content :src="squareUrl" :loading="isSquareLoading"
+                    loading-text="加载万相广场中..." @menu="toggleMobileMenu" @load="onSquareLoad">
+                </embedded-view-content>
+            </div>
+
+            

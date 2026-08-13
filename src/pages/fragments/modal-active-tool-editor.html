@@ -1,0 +1,96 @@
+<!-- Active Tool Editor Modal -->
+        <div v-if="showActiveToolEditor"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div
+                class="bg-white rounded-2xl border border-gray-200 w-full max-w-3xl flex flex-col shadow-2xl max-h-[90vh] overflow-hidden">
+                <div
+                    class="editor-modal-header">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-primary-50 text-primary-600 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94L14.7 6.3z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 leading-tight">编辑工具</h3>
+                            <p class="text-xs text-gray-500">{{ editingActiveTool.data.name || '未命名工具' }}</p>
+                        </div>
+                    </div>
+                    <button @click="showActiveToolEditor = false"
+                        class="modal-close-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-gray-50/30">
+                    <div class="max-w-2xl mx-auto text-center">
+                        <div
+                            class="w-14 h-14 mx-auto rounded-2xl bg-primary-50 text-primary-600 flex items-center justify-center shadow-sm border border-primary-100">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94L14.7 6.3z">
+                                </path>
+                            </svg>
+                        </div>
+                        <h3 class="mt-4 text-xl md:text-2xl font-bold text-gray-900 leading-tight">
+                            {{ editingActiveTool.data.name || '未命名工具' }}
+                        </h3>
+                        <p class="mt-3 text-sm text-gray-500 leading-relaxed whitespace-pre-wrap">
+                            {{ getActiveToolDisplayDescription(editingActiveTool.data) }}
+                        </p>
+                    </div>
+
+                    <div class="max-w-2xl mx-auto bg-white border border-gray-200 rounded-2xl p-5 md:p-6 shadow-sm">
+                        <div class="flex items-center justify-between gap-4 mb-5">
+                            <div>
+                                <div class="text-sm font-bold text-gray-800">返回条数</div>
+                                <div class="text-xs text-gray-500 mt-1">控制每次工具检索返回的内容条数</div>
+                            </div>
+                            <div class="text-xs font-mono text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-100">
+                                {{ editingActiveTool.data.resultCount || 8 }} 条
+                            </div>
+                        </div>
+                        <input v-model.number="editingActiveTool.data.resultCount" type="range"
+                            :min="getActiveToolResultCountMin(editingActiveTool.data)"
+                            :max="getActiveToolResultCountMax(editingActiveTool.data)" step="1"
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600">
+                        <div class="mt-2 flex justify-between text-[11px] text-gray-400 font-medium">
+                            <span>{{ getActiveToolResultCountMin(editingActiveTool.data) }} 条</span>
+                            <span>{{ getActiveToolResultCountMax(editingActiveTool.data) }} 条</span>
+                        </div>
+                    </div>
+
+                    <div v-if="isWebActiveTool(editingActiveTool.data)"
+                        class="max-w-2xl mx-auto bg-white border border-gray-200 rounded-2xl p-5 md:p-6 shadow-sm space-y-5">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Tavily API Key</label>
+                            <input v-model.trim="editingActiveTool.data.tavilyApiKey"
+                                type="password"
+                                class="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 focus:outline-none transition-all"
+                                placeholder="tvly-...">
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="p-4 md:p-5 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50/80 backdrop-blur-sm flex-shrink-0">
+                    <button @click="showActiveToolEditor = false"
+                            class="modal-secondary-button">取消</button>
+                    <button @click="saveActiveTool"
+                        class="modal-primary-button">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        保存工具
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

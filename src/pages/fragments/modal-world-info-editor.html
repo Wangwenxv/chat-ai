@@ -1,0 +1,197 @@
+<!-- World Info Editor Modal -->
+        <div v-if="showWorldInfoEditor"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 md:p-3 animate-fade-in">
+            <div
+                class="bg-white rounded-2xl border border-gray-200 w-full max-w-3xl flex flex-col shadow-2xl max-h-[94vh] overflow-hidden">
+                <!-- Header -->
+                <div
+                    class="editor-modal-header">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-primary-50 text-primary-600 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 leading-tight">{{ editingWorldInfo.id !==
+                                undefined ? '编辑世界书' : '新建世界书' }}</h3>
+                            <p class="text-xs text-gray-500">世界书条目</p>
+                        </div>
+                    </div>
+                    <button @click="showWorldInfoEditor = false"
+                        class="modal-close-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Body -->
+                <div class="flex-1 p-6 space-y-6 bg-gray-50/30 overflow-y-auto custom-scrollbar">
+
+                    <!-- 1. 基础信息 & 触发条件 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Left: Basic -->
+                        <div class="space-y-4">
+                            <div>
+                                <label
+                                    class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">名称/备注
+                                    (Comment)</label>
+                                <input v-model="editingWorldInfo.data.comment" type="text"
+                                    class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-all shadow-sm font-medium"
+                                    placeholder="例如：主城描述">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">作用范围</label>
+                                <custom-select v-model="editingWorldInfo.data.scope" :options="scopeOptions">
+                                </custom-select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">主关键词
+                                    (Keys)</label>
+                                <div class="relative">
+                                    <input
+                                        :value="worldInfoKeysText"
+                                        @input="updateEditingWorldInfoKeys($event.target.value)"
+                                        type="text"
+                                        class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-all shadow-sm"
+                                        placeholder="逗号分隔，留空则需勾选'常驻'">
+                                </div>
+                                <div v-if="editingWorldInfo.data.keys && editingWorldInfo.data.keys.length"
+                                    class="mt-2 flex flex-wrap gap-1.5">
+                                    <span v-for="(key, keyIndex) in editingWorldInfo.data.keys"
+                                        :key="'wi-key-' + keyIndex + '-' + key"
+                                        :title="key"
+                                        class="inline-flex items-center max-w-full rounded-xl border border-primary-100 bg-primary-50 px-2.5 py-1.5 text-xs font-bold text-primary-700 shadow-sm">
+                                        <span :class="editingWorldInfo.data.useRegex ? 'break-all whitespace-normal leading-relaxed' : 'truncate'">{{ key }}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <!-- Match Strategy Tags -->
+                            <div class="flex flex-wrap gap-2">
+                                <label
+                                    :class="['flex-1 flex items-center justify-center space-x-1.5 cursor-pointer px-3 py-1.5 border rounded-xl transition-all select-none shadow-sm active:scale-95',
+                                               editingWorldInfo.data.useRegex ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-white border-gray-200 text-gray-600 hover:border-primary-300']">
+                                    <input type="checkbox" v-model="editingWorldInfo.data.useRegex"
+                                        @change="updateEditingWorldInfoKeys(worldInfoKeysText)" class="hidden">
+                                    <svg v-if="editingWorldInfo.data.useRegex" class="w-3.5 h-3.5" fill="none"
+                                        stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-xs font-bold">正则匹配</span>
+                                </label>
+                                <label
+                                    :class="['flex-1 flex items-center justify-center space-x-1.5 cursor-pointer px-3 py-1.5 border rounded-xl transition-all select-none shadow-sm active:scale-95',
+                                               editingWorldInfo.data.constant ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-white border-gray-200 text-gray-600 hover:border-primary-300']"
+                                    title="常驻条目无需关键词触发，启用后始终插入">
+                                    <input type="checkbox" v-model="editingWorldInfo.data.constant"
+                                        class="hidden">
+                                    <svg v-if="editingWorldInfo.data.constant" class="w-3.5 h-3.5" fill="none"
+                                        stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-xs font-bold">始终常驻</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Right: Position & Probability -->
+                        <div
+                            class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                            <div class="space-y-4">
+                                <div>
+                                    <label
+                                        class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">插入位置</label>
+                                    <custom-select v-model="editingWorldInfo.data.position" :options="worldInfoPositionOptions"
+                                        button-class="bg-white text-sm focus:ring-4 focus:ring-primary-500/10"
+                                        menu-class="text-sm">
+                                    </custom-select>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">顺序</label>
+                                        <input type="number" v-model.number="editingWorldInfo.data.order"
+                                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                            placeholder="100">
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">触发概率
+                                            (%)</label>
+                                        <div
+                                            :class="['flex items-center border rounded-xl transition-all overflow-hidden shadow-sm',
+                                                     editingWorldInfo.data.useProbability ? 'border-primary-300 ring-2 ring-primary-500/10' : 'border-gray-200 opacity-60']">
+                                            <button
+                                                @click="editingWorldInfo.data.useProbability = !editingWorldInfo.data.useProbability"
+                                                :class="['px-3 py-2 transition-colors border-r',
+                                                             editingWorldInfo.data.useProbability ? 'bg-primary-600 text-white border-primary-600' : 'bg-gray-100 text-gray-400 border-gray-200']">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                                </svg>
+                                            </button>
+                                            <input type="number" v-model.number="editingWorldInfo.data.probability"
+                                                min="0" max="100"
+                                                class="w-full bg-white px-3 py-1.5 text-sm font-bold text-gray-700 focus:outline-none"
+                                                :disabled="!editingWorldInfo.data.useProbability" placeholder="100">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">自定义扫描深度</label>
+                                    <input type="number" v-model.number="editingWorldInfo.data.scanDepth"
+                                        class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                        placeholder="默认">
+                                </div>
+                                <div v-if="editingWorldInfo.data.position === 'at_depth'"
+                                    class="pt-2 border-t border-gray-100">
+                                    <label class="block text-xs text-gray-500 mb-1">插入深度 <span
+                                            class="text-[10px] text-gray-400">@D</span></label>
+                                    <input type="number" v-model.number="editingWorldInfo.data.depth"
+                                        class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                        placeholder="4">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Content (Central Area) -->
+                    <div>
+                        <label
+                            class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
+                            <span>内容</span>
+                            <span
+                                class="text-[10px] font-normal normal-case bg-gray-100 px-1.5 rounded text-gray-500">{{
+                                (editingWorldInfo.data.content || '').length }} 字符</span>
+                        </label>
+                        <textarea v-model="editingWorldInfo.data.content" rows="12"
+                            class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none text-sm shadow-inner leading-relaxed resize-y min-h-[260px]"
+                            placeholder="在此输入世界书条目的具体内容..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div
+                    class="p-4 md:p-5 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50/80 backdrop-blur-sm flex-shrink-0 wi-footer">
+                    <button @click="showWorldInfoEditor = false"
+                            class="modal-secondary-button">取消</button>
+                    <button @click="saveWorldInfo"
+                        class="modal-primary-button">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        保存条目
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

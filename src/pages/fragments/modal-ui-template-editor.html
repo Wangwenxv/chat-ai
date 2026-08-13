@@ -1,0 +1,174 @@
+<!-- UI Template Editor Modal -->
+        <div v-if="showUiTemplateEditor"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 md:p-3 animate-fade-in">
+            <div
+                class="bg-white rounded-2xl border border-gray-200 w-full max-w-4xl flex flex-col shadow-2xl max-h-[94vh] overflow-hidden">
+                <div
+                    class="editor-modal-header">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-primary-50 text-primary-600 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm4 3h8M8 12h8M8 16h5">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 leading-tight">{{ editingUiTemplate.id !== undefined
+                                ? '编辑UI模板' : '新建UI模板' }}</h3>
+                            <p class="text-xs text-gray-500">HTML状态栏 + 变量JSON</p>
+                        </div>
+                    </div>
+                    <button @click="showUiTemplateEditor = false"
+                        class="modal-close-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 bg-gray-50/30 space-y-6">
+                    <div class="segmented-switch segmented-switch--slim">
+                        <div class="segmented-switch__indicator"
+                            :class="{ 'is-right': editingUiTemplate.tab !== 'history' }"></div>
+                        <button @click="editingUiTemplate.tab = 'history'"
+                            class="segmented-switch__option"
+                            :class="{ 'is-active': editingUiTemplate.tab === 'history' }">
+                            <span>变更记录</span>
+                        </button>
+                        <button @click="editingUiTemplate.tab = 'edit'"
+                            class="segmented-switch__option"
+                            :class="{ 'is-active': editingUiTemplate.tab === 'edit' }">
+                            <span>编辑内容</span>
+                        </button>
+                    </div>
+
+                    <div v-if="editingUiTemplate.tab === 'history'" class="space-y-4">
+                        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4">
+                            <div>
+                                <div class="text-base font-bold text-gray-800">变更记录</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-primary-600">{{ (editingUiTemplate.data.changeLog || []).length }}</div>
+                            </div>
+                        </div>
+
+                        <div v-if="!(editingUiTemplate.data.changeLog || []).length"
+                            class="bg-white border border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400">
+                            暂无变更记录
+                        </div>
+
+                        <div v-else class="space-y-3">
+                            <div v-for="(log, logIndex) in (editingUiTemplate.data.changeLog || [])"
+                                :key="log.id || logIndex"
+                                class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                                <div class="font-bold text-gray-800">第 {{ log.turn || '?' }} 轮</div>
+
+                                <div v-if="log.reason" class="mt-3 rounded-xl bg-amber-50/70 border border-amber-100 px-3 py-2 text-xs text-amber-800 leading-relaxed">
+                                    {{ log.reason }}
+                                </div>
+
+                                <div class="mt-3 space-y-3">
+                                    <div v-for="(change, key) in (log.changes || {})" :key="key"
+                                        class="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                                        <div class="text-xs font-bold text-gray-700 mb-2">{{ key }}</div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div class="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs text-gray-600 leading-relaxed">
+                                                <span class="font-bold text-gray-400">前：</span><span class="whitespace-pre-wrap break-words">{{ formatUiTemplateChangeValue(change && change.from) }}</span>
+                                            </div>
+                                            <div class="bg-white border border-primary-100 rounded-lg px-3 py-2 text-xs text-gray-800 leading-relaxed">
+                                                <span class="font-bold text-primary-500">后：</span><span class="whitespace-pre-wrap break-words">{{ formatUiTemplateChangeValue(change && change.to) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-else class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">模板名称</label>
+                            <input v-model="editingUiTemplate.data.name" type="text"
+                                class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-all shadow-sm"
+                                placeholder="例如：角色状态栏">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">作用范围</label>
+                            <custom-select v-model="editingUiTemplate.data.scope" :options="scopeOptions">
+                            </custom-select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">插入位置</label>
+                            <custom-select v-model="editingUiTemplate.data.placement" :options="uiTemplatePlacementOptions">
+                            </custom-select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">排序</label>
+                            <input v-model.number="editingUiTemplate.data.order" type="number"
+                                class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none transition-all shadow-sm"
+                                placeholder="100">
+                        </div>
+                    </div>
+
+                    <details class="group bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                        <summary
+                            class="list-none cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
+                            <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                HTML模板
+                            </span>
+                            <span class="flex items-center gap-2 text-[11px] font-bold text-gray-400">
+                                <span class="group-open:hidden">展开</span>
+                                <span class="hidden group-open:inline">折叠</span>
+                                <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <textarea v-model="editingUiTemplate.data.htmlTemplate" rows="22"
+                            class="w-full bg-white border-0 border-t border-gray-100 rounded-none px-4 py-3 text-gray-800 focus:ring-2 focus:ring-inset focus:ring-primary-500 focus:outline-none font-mono text-sm shadow-inner leading-relaxed resize-y min-h-[460px]"
+                            placeholder="<section>...</section>"></textarea>
+                    </details>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">变量JSON</label>
+                            <textarea v-model="editingUiTemplate.data.variableStateText" rows="22"
+                                class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none text-sm shadow-inner leading-relaxed resize-y min-h-[460px]"
+                                placeholder='{"status":"平稳","equipment":[{"slot":"武器","name":"短剑","durability":80}]}'></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">变量说明（给AI参考，可选）</label>
+                            <textarea v-model="editingUiTemplate.data.variableSchemaText" rows="22"
+                                class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none text-sm shadow-inner leading-relaxed resize-y min-h-[460px]"
+                                placeholder="例如：status 表示角色当前身体和情绪状态；location 表示当前场景地点；relationship 表示双方关系变化。"></textarea>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">原始状态预览</label>
+                        <div class="ui-template-preview w-full bg-white p-0 overflow-visible min-h-[460px]"
+                            v-html="renderEditingUiTemplatePreview()"></div>
+                    </div>
+                    </div>
+                </div>
+
+                <div v-if="editingUiTemplate.tab === 'edit'"
+                    class="p-4 md:p-5 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50/80 backdrop-blur-sm flex-shrink-0">
+                    <button @click="showUiTemplateEditor = false"
+                            class="modal-secondary-button">取消</button>
+                    <button @click="saveUiTemplate"
+                        class="modal-primary-button">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        保存模板
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        

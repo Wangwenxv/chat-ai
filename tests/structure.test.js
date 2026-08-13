@@ -47,3 +47,62 @@ test('默认人格 URL 只在配置模块中声明', () => {
     assert.equal(app.includes("const CHAT_AI_CHARACTER_CARD_URL ="), false);
     assert.equal(config.includes("const CHAT_AI_CHARACTER_CARD_URL = 'assets/defalut/Chat-ai.json';"), true);
 });
+
+test('侧边栏的十二个页面都有独立 HTML 入口', () => {
+    const pages = [
+        'chat', 'usage', 'memory', 'uitemplates', 'characters', 'generator',
+        'square', 'presets', 'worldinfo', 'regex', 'tools', 'settings'
+    ];
+    pages.forEach(page => {
+        const entry = path.join(projectRoot, 'pages', `${page}.html`);
+        assert.equal(fs.existsSync(entry), true, `缺少页面入口: ${page}`);
+        const html = fs.readFileSync(entry, 'utf8');
+        assert.ok(html.includes('assets/js/page-navigation.js'), `页面未加载导航模块: ${page}`);
+        assert.ok(html.includes('assets/js/app.js'), `页面未加载应用运行时: ${page}`);
+    });
+});
+
+test('每个页面入口只包含自己的主视图', () => {
+    const pageMarkers = {
+        chat: '<!-- Chat View -->',
+        usage: '<!-- Token Usage View -->',
+        memory: '<!-- Memory View -->',
+        uitemplates: '<!-- UI Templates View -->',
+        characters: '<!-- Characters Management -->',
+        generator: '<!-- Generator View -->',
+        square: '<!-- Square View -->',
+        presets: '<!-- Presets View -->',
+        worldinfo: '<!-- World Info View -->',
+        regex: '<!-- Regex View -->',
+        tools: '<!-- Tools View -->',
+        settings: '<!-- Settings View -->'
+    };
+    Object.entries(pageMarkers).forEach(([page, expectedMarker]) => {
+        const html = readProjectFile(`pages/${page}.html`);
+        Object.entries(pageMarkers).forEach(([otherPage, marker]) => {
+            assert.equal(
+                html.includes(marker),
+                page === otherPage,
+                `${page} 入口包含了错误的主视图: ${otherPage}`
+            );
+        });
+        assert.ok(html.includes(expectedMarker));
+    });
+});
+
+test('页面导航使用真实入口，运行时由轻量加载器按领域片段装配', () => {
+    const generatedHtml = readProjectFile('pages/chat.html');
+    const appSourceDir = path.join(projectRoot, 'src', 'app');
+    const appParts = fs.readdirSync(appSourceDir).filter(file => file.endsWith('.part.js')).sort();
+    assert.equal(generatedHtml.includes("@click=\"currentView = '"), false);
+    assert.ok(generatedHtml.includes("navigateToPage('chat')"));
+    assert.ok(appParts.length >= 20, 'app 运行时仍未按领域充分拆分');
+    appParts.forEach(file => {
+        const lines = fs.readFileSync(path.join(appSourceDir, file), 'utf8').split(/\r?\n/).length;
+        assert.ok(lines < 1800, `${file} 仍然过长: ${lines} 行`);
+    });
+    const loader = readProjectFile('assets/js/app.js');
+    assert.ok(loader.split(/\r?\n/).length < 80, 'app.js 应只保留轻量加载器');
+    assert.ok(loader.includes("new URL('src/app/' + fragment, projectRootUrl)"));
+    appParts.forEach(file => assert.ok(loader.includes(file), `加载器缺少片段: ${file}`));
+});
